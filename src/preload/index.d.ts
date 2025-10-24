@@ -9,6 +9,10 @@ declare global {
       getGitHubVersion: () => Promise<string | null>
       openExternal: (url: string) => Promise<void>
       showOpenDialog: () => Promise<{ filePath: string; fileUrl: string } | null>
+      // M3U import APIs
+      showM3UDialog: () => Promise<string | null>
+      readM3UFile: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
+      fetchM3UUrl: (url: string) => Promise<{ success: boolean; content?: string; error?: string }>
       // Grid management APIs
       saveGrid: (grid: SavedGrid) => Promise<void>
       loadGrid: (gridId: string) => Promise<SavedGrid | null>

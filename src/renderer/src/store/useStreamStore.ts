@@ -27,6 +27,7 @@ interface StreamStore {
   // Core stream methods
   setLastDraggedId: (id: string | null) => void
   addStream: (stream: Stream) => void
+  addMultipleStreams: (streams: Stream[]) => void
   removeStream: (id: string) => void
   updateStream: (id: string, updates: Partial<Stream>) => void
   updateLayout: (newLayout: GridItem[]) => void
@@ -126,6 +127,79 @@ export const useStreamStore = create<StreamStore>()(
             },
             false,
             'ADD_STREAM'
+          ),
+
+        addMultipleStreams: (streams): void =>
+          set(
+            (state) => {
+              // Calculate optimal grid layout for new streams
+              const totalStreams = state.streams.length + streams.length
+
+              // Grid system: 12 columns, ~12 rows visible (accounting for AppBar ~64px)
+              const maxVisibleRows = 12 // Approximate rows that fit in viewport
+
+              // Calculate optimal grid dimensions to fit all streams
+              let rowsNeeded: number
+
+              // Try different configurations to find best fit
+              const configurations = [
+                { width: 6, height: 6, perRow: 2 },   // 2×N grid (large tiles)
+                { width: 4, height: 4, perRow: 3 },   // 3×N grid (medium tiles)
+                { width: 3, height: 3, perRow: 4 },   // 4×N grid (small tiles)
+                { width: 2.4, height: 2.4, perRow: 5 }, // 5×N grid (tiny tiles)
+                { width: 2, height: 2, perRow: 6 },   // 6×N grid (micro tiles)
+                { width: 1.5, height: 1.5, perRow: 8 }, // 8×N grid (mini tiles)
+                { width: 1.2, height: 1.2, perRow: 10 } // 10×N grid (nano tiles)
+              ]
+
+              // Find the largest tile size that fits all streams in viewport
+              let bestConfig = configurations[configurations.length - 1] // Default to smallest
+
+              for (const config of configurations) {
+                rowsNeeded = Math.ceil(totalStreams / config.perRow)
+                const totalHeight = rowsNeeded * config.height
+
+                if (totalHeight <= maxVisibleRows) {
+                  bestConfig = config
+                  break
+                }
+              }
+
+              const streamWidth = bestConfig.width
+              const streamHeight = bestConfig.height
+              const streamsPerRow = bestConfig.perRow
+
+              // Re-layout ALL streams (existing + new) for consistency
+              const allStreams = [...state.streams, ...streams]
+              const allLayouts: GridItem[] = []
+
+              allStreams.forEach((stream, index) => {
+                const row = Math.floor(index / streamsPerRow)
+                const col = (index % streamsPerRow) * streamWidth
+
+                allLayouts.push({
+                  i: stream.id,
+                  x: col,
+                  y: row * streamHeight,
+                  w: streamWidth,
+                  h: streamHeight
+                })
+              })
+
+              // Apply default mute setting to new streams
+              const streamsWithMute = streams.map(stream => ({
+                ...stream,
+                isMuted: stream.isMuted !== undefined ? stream.isMuted : state.settings.defaultMuteNewStreams
+              }))
+
+              return {
+                streams: [...state.streams, ...streamsWithMute],
+                layout: allLayouts, // Use re-calculated layout for all streams
+                hasUnsavedChanges: true
+              }
+            },
+            false,
+            'ADD_MULTIPLE_STREAMS'
           ),
 
         removeStream: (id): void =>

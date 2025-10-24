@@ -8,6 +8,10 @@ const api = {
   getGitHubVersion: (): Promise<string | null> => ipcRenderer.invoke('get-github-version'),
   openExternal: (url: string): Promise<void> => shell.openExternal(url),
   showOpenDialog: (): Promise<{ filePath: string; fileUrl: string } | null> => ipcRenderer.invoke('show-open-dialog'),
+  // M3U import APIs
+  showM3UDialog: (): Promise<string | null> => ipcRenderer.invoke('show-m3u-dialog'),
+  readM3UFile: (filePath: string): Promise<{ success: boolean; content?: string; error?: string }> => ipcRenderer.invoke('read-m3u-file', filePath),
+  fetchM3UUrl: (url: string): Promise<{ success: boolean; content?: string; error?: string }> => ipcRenderer.invoke('fetch-m3u-url', url),
   // Grid management APIs
   saveGrid: (grid: SavedGrid): Promise<void> => ipcRenderer.invoke('save-grid', grid),
   loadGrid: (gridId: string): Promise<SavedGrid | null> => ipcRenderer.invoke('load-grid', gridId),

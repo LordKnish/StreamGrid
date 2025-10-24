@@ -32,6 +32,7 @@ export interface DebouncedStore {
   // Core methods
   setLastDraggedId: (id: string | null) => void
   addStream: (stream: Stream) => void
+  addMultipleStreams: (streams: Stream[]) => void
   removeStream: (id: string) => void
   updateStream: (id: string, updates: Partial<Stream>) => void
   updateLayout: (newLayout: GridItem[]) => void

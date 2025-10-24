@@ -356,6 +356,7 @@ app.whenReady().then(async () => {
           extensions: ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv']
         },
         { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg', 'aac', 'm4a', 'flac'] },
+        { name: 'M3U Playlists', extensions: ['m3u', 'm3u8'] },
         { name: 'All Files', extensions: ['*'] }
       ]
     })
@@ -367,6 +368,92 @@ app.whenReady().then(async () => {
       return { filePath, fileUrl }
     }
     return null
+  })
+
+  // Add handler for M3U file dialog
+  ipcMain.handle('show-m3u-dialog', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [
+        { name: 'M3U Playlists', extensions: ['m3u', 'm3u8'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0]
+    }
+    return null
+  })
+
+  // Add handler for reading M3U file content
+  ipcMain.handle('read-m3u-file', async (_, filePath: string) => {
+    try {
+      // Read file as buffer first to detect encoding
+      const buffer = await fs.readFile(filePath)
+
+      // Check for UTF-16 BOM
+      let content: string
+      if (buffer.length >= 2) {
+        // UTF-16 LE BOM: FF FE
+        if (buffer[0] === 0xFF && buffer[1] === 0xFE) {
+          content = buffer.toString('utf16le')
+        }
+        // UTF-16 BE BOM: FE FF
+        else if (buffer[0] === 0xFE && buffer[1] === 0xFF) {
+          // Node.js doesn't have utf16be, so we need to swap bytes
+          const swapped = Buffer.alloc(buffer.length)
+          for (let i = 0; i < buffer.length; i += 2) {
+            swapped[i] = buffer[i + 1]
+            swapped[i + 1] = buffer[i]
+          }
+          content = swapped.toString('utf16le')
+        }
+        // UTF-8 BOM: EF BB BF
+        else if (buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
+          content = buffer.toString('utf-8')
+        }
+        // No BOM, try UTF-8
+        else {
+          content = buffer.toString('utf-8')
+        }
+      } else {
+        content = buffer.toString('utf-8')
+      }
+
+      return { success: true, content }
+    } catch (error) {
+      console.error('Error reading M3U file:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to read file'
+      }
+    }
+  })
+
+  // Add handler for fetching M3U from URL
+  ipcMain.handle('fetch-m3u-url', async (_, url: string) => {
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'StreamGrid/2.0'
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const content = await response.text()
+      return { success: true, content }
+    } catch (error) {
+      console.error('Error fetching M3U URL:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch URL'
+      }
+    }
   })
 
   // Grid management setup

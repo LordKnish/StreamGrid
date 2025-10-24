@@ -45,6 +45,7 @@ export const App: React.FC = () => {
     layout,
     chats,
     addStream,
+    addMultipleStreams,
     removeStream,
     updateLayout,
     updateStream,
@@ -168,6 +169,14 @@ export const App: React.FC = () => {
     // Save immediately after updating a stream
     await saveNow()
   }, [updateStream, saveNow])
+
+  const handleAddMultipleStreams = useCallback(async (importedStreams: Stream[]): Promise<void> => {
+    // Add all imported streams
+    addMultipleStreams(importedStreams)
+
+    // Save immediately after import
+    await saveNow()
+  }, [addMultipleStreams, saveNow])
 
   // Auto-save is now handled by the debounced store
   // No need for manual auto-save implementation here
@@ -334,6 +343,7 @@ export const App: React.FC = () => {
           setEditingStream(undefined)
         }}
         onAdd={handleAddStream}
+        onAddMultiple={handleAddMultipleStreams}
         onEdit={handleUpdateStream}
         editStream={editingStream}
       />
