@@ -658,7 +658,7 @@ const StreamCard = memo(
                     }}
                   >
                     <iframe
-                      src={`https://player.twitch.tv/?channel=${channelName}&muted=${currentMuteState}`}
+                      src={`https://player.twitch.tv/?channel=${channelName}&parent=${window.location.hostname}&muted=${currentMuteState}`}
                       width="100%"
                       height="100%"
                       frameBorder="0"
