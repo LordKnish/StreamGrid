@@ -36,7 +36,11 @@ https://github.com/user-attachments/assets/1e098512-ed39-4094-ab13-84c144e60f7c
   - **Local Files** (New in v1.2.0): Play video files directly from your computer
   - **YouTube**: Support for standard videos, live streams, and shorts
   - **Twitch**: Support for channel live streams
-  - **RTSP Streams** (New in v1.2.1): Support for RTSP/RTSPS camera and streaming sources
+  - **RTSP Streams**: Support for RTSP/RTSPS camera and streaming sources with automatic transcoding
+    - Requires FFmpeg installation
+    - Supports authentication (username/password in URL)
+    - Low-latency HLS transcoding
+    - Multiple concurrent RTSP streams
   - **HLS Support**: Compatible with HTTP Live Streaming (HLS) video sources
   - **MPEG-DASH Support**: Compatible with Dynamic Adaptive Streaming over HTTP (DASH) video sources
 - **Chat Integration**:
@@ -65,7 +69,31 @@ https://github.com/user-attachments/assets/1e098512-ed39-4094-ab13-84c144e60f7c
 #### Prerequisites
 - Node.js 18.x or higher
 - npm 9.x or higher
-- FFmpeg (required for RTSP streaming support)
+- **FFmpeg** (required for RTSP streaming support)
+
+##### Installing FFmpeg
+
+**Windows:**
+1. Download FFmpeg from [ffmpeg.org](https://ffmpeg.org/download.html)
+2. Extract to `C:\ffmpeg`
+3. Add `C:\ffmpeg\bin` to your system PATH
+4. Or use Chocolatey: `choco install ffmpeg`
+
+**macOS:**
+```bash
+brew install ffmpeg
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt update
+sudo apt install ffmpeg
+```
+
+**Linux (Fedora/RHEL):**
+```bash
+sudo yum install ffmpeg
+```
 
 #### Steps
 
@@ -100,6 +128,68 @@ npm run build:linux  # Linux
    - Windows: `dist/streamgrid-1.2.0-setup.exe`
    - macOS: `dist/streamgrid-1.2.0.dmg`
    - Linux: `dist/streamgrid-1.2.0.AppImage`
+
+## 📹 RTSP Stream Support
+
+StreamGrid supports RTSP (Real Time Streaming Protocol) streams from IP cameras, security systems, and other RTSP sources.
+
+### Requirements
+- FFmpeg must be installed on your system (see installation instructions above)
+- RTSP stream URL from your camera or source
+
+### RTSP URL Format
+```
+rtsp://[username:password@]host[:port]/path
+```
+
+**Examples:**
+```
+rtsp://192.168.1.100:554/stream1
+rtsp://admin:password@192.168.1.100/live
+rtsps://secure-camera.example.com/stream
+```
+
+### How It Works
+1. StreamGrid detects RTSP URLs automatically
+2. FFmpeg transcodes the RTSP stream to HLS format in real-time
+3. The HLS stream is served locally and played in the browser
+4. Low latency (~2-3 seconds) with automatic retry on connection loss
+
+### Adding an RTSP Stream
+1. Click "Add Stream" button
+2. Enter your RTSP URL in the Stream URL field
+3. The app will show "RTSP stream (requires FFmpeg)" if detected
+4. Add a name and optional logo
+5. Click "Add Stream"
+
+### Troubleshooting RTSP Streams
+
+**"FFmpeg not installed" error:**
+- Install FFmpeg using the instructions above
+- Restart StreamGrid after installation
+- Verify FFmpeg is in your system PATH: `ffmpeg -version`
+
+**Stream fails to load:**
+- Verify the RTSP URL is correct
+- Check if authentication is required (username/password)
+- Ensure your firewall allows RTSP connections
+- Try using TCP transport: `rtsp://camera?tcp`
+
+**High latency or buffering:**
+- RTSP streams have inherent 2-3 second latency due to HLS transcoding
+- Check your network connection to the camera
+- Reduce the number of concurrent RTSP streams
+
+**Stream stops after a while:**
+- StreamGrid automatically retries failed streams (up to 3 times)
+- Check camera timeout settings
+- Verify network stability
+
+### Performance Tips
+- Limit concurrent RTSP streams to 3-4 for best performance
+- Use wired network connection for cameras when possible
+- Close unused RTSP streams to free resources
+- RTSP transcoding uses ~100MB RAM per stream
 
 ## 🛠 Tech Stack
 

@@ -19,6 +19,13 @@ const api = {
   renameGrid: (gridId: string, newName: string): Promise<void> => ipcRenderer.invoke('rename-grid', gridId, newName),
   getGridManifest: (): Promise<GridManifest> => ipcRenderer.invoke('get-grid-manifest'),
   getAllGrids: (): Promise<Array<{ id: string; name: string; lastModified: string; streamCount: number }>> => ipcRenderer.invoke('get-all-grids'),
+  // RTSP streaming APIs
+  rtspStartStream: (streamId: string, rtspUrl: string): Promise<{ success: boolean; url?: string; port?: number; error?: string }> =>
+    ipcRenderer.invoke('rtspStartStream', streamId, rtspUrl),
+  rtspStopStream: (streamId: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('rtspStopStream', streamId),
+  rtspCheckFfmpeg: (): Promise<{ available: boolean; version?: string; path?: string }> =>
+    ipcRenderer.invoke('rtspCheckFfmpeg'),
   // App lifecycle events
   onAppBeforeQuit: (callback: () => void): (() => void) => {
     const listener = (): void => callback()

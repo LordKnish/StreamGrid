@@ -1,7 +1,7 @@
 {
   "name": "streamgrid",
   "version": "2.0.0",
-  "description": "A high-performance multi-stream viewer application for watching multiple live streams simultaneously in customizable grid layouts",
+  "description": "A high-performance multi-stream viewer application for watching multiple live streams simultaneously in customizable grid layouts. Supports YouTube, Twitch, HLS, DASH, RTSP, and local files.",
   "main": "./out/main/index.js",
   "author": {
     "name": "LordKnish",

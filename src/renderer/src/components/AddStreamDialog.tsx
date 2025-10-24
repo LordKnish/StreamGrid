@@ -229,11 +229,14 @@ export const AddStreamDialog: React.FC<AddStreamDialogProps> = ({
     // If M3U entries exist, we're valid
     if (m3uEntries.length > 0) return true
 
+    // Check if it's an RTSP URL
+    const isRtspUrl = formData.streamUrl.startsWith('rtsp://') || formData.streamUrl.startsWith('rtsps://')
+
     // Otherwise check normal stream validation
     return (
       formData.name.length >= 2 &&
       (formData.logoUrl.length === 0 || isValidImageUrl(formData.logoUrl)) &&
-      (ReactPlayer.canPlay(formData.streamUrl) || formData.streamUrl.startsWith('file://'))
+      (ReactPlayer.canPlay(formData.streamUrl) || formData.streamUrl.startsWith('file://') || isRtspUrl)
     )
   }, [formData, isValidImageUrl, m3uEntries.length])
 
@@ -540,7 +543,7 @@ export const AddStreamDialog: React.FC<AddStreamDialogProps> = ({
                 }
 
                 setFormData((prev) => ({ ...prev, streamUrl: cleanUrl }))
-                if (ReactPlayer.canPlay(cleanUrl) || cleanUrl.startsWith('file://')) {
+                if (ReactPlayer.canPlay(cleanUrl) || cleanUrl.startsWith('file://') || cleanUrl.startsWith('rtsp://') || cleanUrl.startsWith('rtsps://')) {
                   setStreamPreview(cleanUrl)
                   setStreamType(streamType)
 
@@ -582,13 +585,15 @@ export const AddStreamDialog: React.FC<AddStreamDialogProps> = ({
                   setM3uError(null)
                 }
               }}
-              error={formData.streamUrl.length > 0 && !ReactPlayer.canPlay(formData.streamUrl) && !formData.streamUrl.startsWith('file://') && m3uEntries.length === 0}
+              error={formData.streamUrl.length > 0 && !ReactPlayer.canPlay(formData.streamUrl) && !formData.streamUrl.startsWith('file://') && !formData.streamUrl.startsWith('rtsp://') && !formData.streamUrl.startsWith('rtsps://') && m3uEntries.length === 0}
               helperText={
                 formData.streamUrl.length > 0
-                  ? !ReactPlayer.canPlay(formData.streamUrl) && !formData.streamUrl.startsWith('file://') && m3uEntries.length === 0
+                  ? !ReactPlayer.canPlay(formData.streamUrl) && !formData.streamUrl.startsWith('file://') && !formData.streamUrl.startsWith('rtsp://') && !formData.streamUrl.startsWith('rtsps://') && m3uEntries.length === 0
                     ? 'Invalid stream URL'
+                    : formData.streamUrl.startsWith('rtsp://') || formData.streamUrl.startsWith('rtsps://')
+                    ? 'RTSP stream (requires FFmpeg)'
                     : ' '
-                  : 'Enter a URL or browse for a local file/M3U playlist'
+                  : 'Enter a URL or browse for a local file/M3U playlist. Supports YouTube, Twitch, HLS, DASH, RTSP, and local files.'
               }
               onPaste={handlePaste}
               InputProps={{

@@ -53,8 +53,13 @@ const extractYoutubeVideoId = (url: string): string | null => {
   return null
 }
 
-const detectStreamType = (url: string): 'hls' | 'dash' | 'youtube' | 'twitch' | 'local' | 'other' => {
-  // Check for local file first
+const detectStreamType = (url: string): 'hls' | 'dash' | 'youtube' | 'twitch' | 'local' | 'rtsp' | 'other' => {
+  // Check for RTSP first
+  if (url.startsWith('rtsp://') || url.startsWith('rtsps://')) {
+    return 'rtsp'
+  }
+
+  // Check for local file
   if (url.startsWith('file://')) {
     return 'local'
   }
@@ -166,7 +171,9 @@ const StreamCard = memo(
   const [isPlaying, setIsPlaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [loadingMessage, setLoadingMessage] = useState<string>('')
   const [logoUrl, setLogoUrl] = useState<string>('')
+  const [transcodedUrl, setTranscodedUrl] = useState<string | null>(null)
   const errorTimerRef = useRef<NodeJS.Timeout | null>(null)
   const currentFitMode = stream.fitMode || 'contain'
   const currentMuteState = stream.isMuted || false
@@ -203,6 +210,9 @@ const StreamCard = memo(
     } else if (type === 'local') {
       // For local files, use minimal config
       config = { file: BASE_CONFIG }
+    } else if (type === 'rtsp') {
+      // RTSP streams will be transcoded to HLS, so use HLS config
+      config = { file: HLS_CONFIG }
     } else {
       config = { file: HLS_CONFIG }
     }
@@ -231,13 +241,50 @@ const StreamCard = memo(
       errorTimerRef.current = null
     }
 
-    // Start playing in next tick
+    // Handle RTSP streams
+    if (streamType === 'rtsp') {
+      console.log('Starting RTSP stream:', cleanUrl)
+
+      // Show loading immediately with custom message
+      setLoadingMessage('Starting RTSP transcoding...')
+      setIsLoading(true)
+      setIsPlaying(true) // Set playing to show the player container with loading overlay
+
+      // Check FFmpeg availability
+      const ffmpegCheck = await window.api.rtspCheckFfmpeg()
+      if (!ffmpegCheck.available) {
+        setError('FFmpeg not installed. Please install FFmpeg to play RTSP streams.')
+        setIsLoading(false)
+        setIsPlaying(false)
+        setLoadingMessage('')
+        return
+      }
+
+      // Start RTSP transcoding
+      setLoadingMessage('Connecting to RTSP stream...')
+      const result = await window.api.rtspStartStream(stream.id, stream.streamUrl)
+      if (result.success && result.url) {
+        console.log('RTSP transcoding started, HLS URL:', result.url)
+        console.log('Will play HLS stream with config:', HLS_CONFIG)
+        setLoadingMessage('Buffering stream...')
+        setTranscodedUrl(result.url)
+        // Keep loading state - will be cleared by onReady callback
+      } else {
+        setError(result.error || 'Failed to start RTSP stream')
+        setIsLoading(false)
+        setIsPlaying(false)
+        setLoadingMessage('')
+      }
+      return
+    }
+
+    // Start playing in next tick for non-RTSP streams
     setTimeout(() => {
       console.log('Attempting to play stream:', cleanUrl)
       setIsPlaying(true)
       setIsLoading(true)
     }, 0)
-  }, [cleanUrl])
+  }, [cleanUrl, streamType, stream.id, stream.streamUrl])
 
   // Expose play/stop methods via ref
   useImperativeHandle(ref, () => ({
@@ -267,22 +314,32 @@ const StreamCard = memo(
       errorTimerRef.current = null
     }
 
+    // Stop RTSP transcoding if this is an RTSP stream
+    if (streamType === 'rtsp') {
+      console.log('Stopping RTSP stream:', stream.id)
+      await window.api.rtspStopStream(stream.id)
+      setTranscodedUrl(null)
+    }
+
     removeChatsForStream(stream.id)
-  }, [stream.id, removeChatsForStream])
+  }, [stream.id, streamType, removeChatsForStream])
 
   const handleReady = useCallback(() => {
-    console.log('Stream ready:', cleanUrl)
+    const displayUrl = transcodedUrl || cleanUrl
+    console.log('Stream ready:', displayUrl)
     setIsLoading(false)
+    setLoadingMessage('')
     setError(null)
     // Clear any pending error timer when stream recovers
     if (errorTimerRef.current) {
       clearTimeout(errorTimerRef.current)
       errorTimerRef.current = null
     }
-  }, [cleanUrl])
+  }, [cleanUrl, transcodedUrl])
 
-  const handleError = useCallback(() => {
-    console.error('Stream connection issue:', cleanUrl)
+  const handleError = useCallback((error: any) => {
+    const displayUrl = transcodedUrl || cleanUrl
+    console.error('Stream connection issue:', displayUrl, error)
     setIsLoading(true)
 
     // Clear any existing timer
@@ -292,21 +349,25 @@ const StreamCard = memo(
 
     // Set new timer for 15 seconds
     errorTimerRef.current = setTimeout(() => {
-      console.error('Stream failed to recover:', cleanUrl)
+      console.error('Stream failed to recover:', displayUrl)
       setError('Failed to load stream')
       setIsLoading(false)
       errorTimerRef.current = null
     }, 15000)
-  }, [cleanUrl])
+  }, [cleanUrl, transcodedUrl])
 
-  // Cleanup timer on unmount
+  // Cleanup timer and RTSP stream on unmount
   React.useEffect(() => {
     return (): void => {
       if (errorTimerRef.current) {
         clearTimeout(errorTimerRef.current)
       }
+      // Stop RTSP stream on unmount
+      if (streamType === 'rtsp' && isPlaying) {
+        window.api.rtspStopStream(stream.id)
+      }
     }
-  }, [])
+  }, [streamType, isPlaying, stream.id])
 
   const handleToggleFitMode = useCallback(() => {
     const newFitMode = currentFitMode === 'contain' ? 'cover' : 'contain'
@@ -639,21 +700,30 @@ const StreamCard = memo(
                       }
                     }}
                   >
-                    <ReactPlayer
-                      key={cleanUrl}
-                      url={cleanUrl}
-                      width="100%"
-                      height="100%"
-                      playing={true}
-                      muted={currentMuteState}
-                      controls={true}
-                      onReady={handleReady}
-                      onError={handleError}
-                      config={playerConfig}
-                      playsinline
-                      stopOnUnmount
-                      pip={false}
-                    />
+                    {/* Only render ReactPlayer when we have a valid URL */}
+                    {(streamType !== 'rtsp' || transcodedUrl) && (
+                      <ReactPlayer
+                        key={transcodedUrl || cleanUrl}
+                        url={transcodedUrl || cleanUrl}
+                        width="100%"
+                        height="100%"
+                        playing={true}
+                        muted={currentMuteState}
+                        controls={true}
+                        onReady={handleReady}
+                        onError={handleError}
+                        onProgress={(state) => {
+                          // Log progress for RTSP streams to debug
+                          if (streamType === 'rtsp' && transcodedUrl) {
+                            console.log('RTSP stream progress:', state)
+                          }
+                        }}
+                        config={playerConfig}
+                        playsinline
+                        stopOnUnmount
+                        pip={false}
+                      />
+                    )}
                   </Box>
                 )}
               </Suspense>
@@ -683,25 +753,39 @@ const StreamCard = memo(
                   {error}
                 </Typography>
               ) : (
-                <Box
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    border: 4,
-                    borderColor: 'primary.main',
-                    borderTopColor: 'transparent',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite',
-                    '@keyframes spin': {
-                      '0%': {
-                        transform: 'rotate(0deg)'
-                      },
-                      '100%': {
-                        transform: 'rotate(360deg)'
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                  <Box
+                    sx={{
+                      width: 32,
+                      height: 32,
+                      border: 4,
+                      borderColor: 'primary.main',
+                      borderTopColor: 'transparent',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite',
+                      '@keyframes spin': {
+                        '0%': {
+                          transform: 'rotate(0deg)'
+                        },
+                        '100%': {
+                          transform: 'rotate(360deg)'
+                        }
                       }
-                    }
-                  }}
-                />
+                    }}
+                  />
+                  {loadingMessage && (
+                    <Typography
+                      sx={{
+                        color: 'white',
+                        fontSize: '0.875rem',
+                        textAlign: 'center',
+                        px: 2
+                      }}
+                    >
+                      {loadingMessage}
+                    </Typography>
+                  )}
+                </Box>
               )}
             </Box>
           )}

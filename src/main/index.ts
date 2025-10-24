@@ -5,6 +5,7 @@ import https from 'https'
 import fs from 'fs/promises'
 import path from 'path'
 import type { SavedGrid, GridManifest } from '../shared/types/grid'
+import { rtspService } from './rtspService'
 
 // Diagnostic logging
 console.log('MAIN ENTRY', {
@@ -456,6 +457,19 @@ app.whenReady().then(async () => {
     }
   })
 
+  // RTSP streaming handlers
+  ipcMain.handle('rtspCheckFfmpeg', async () => {
+    return await rtspService.checkFfmpeg()
+  })
+
+  ipcMain.handle('rtspStartStream', async (_, streamId: string, rtspUrl: string) => {
+    return await rtspService.startStream(streamId, rtspUrl)
+  })
+
+  ipcMain.handle('rtspStopStream', async (_, streamId: string) => {
+    return await rtspService.stopStream(streamId)
+  })
+
   // Grid management setup
   await setupGridManagement()
 
@@ -624,6 +638,9 @@ app.on('before-quit', async (event) => {
   const windows = BrowserWindow.getAllWindows()
   if (windows.length > 0) {
     event.preventDefault()
+
+    // Stop all RTSP streams
+    await rtspService.stopAllStreams()
 
     // Send save request to all windows
     for (const window of windows) {
