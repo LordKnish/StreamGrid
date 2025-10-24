@@ -4,6 +4,77 @@ import { Stream, GridItem, AppSettings } from '../types/stream'
 import { validateImportData } from './streamSelectors'
 import { SavedGrid } from '../types/grid'
 
+// Pure integer grid layout helper - no viewport math, no fractional units
+const GRID_COLS = 24
+const TARGET_ASPECT = 16 / 9
+
+type LayoutOpts = {
+  allowedWidths?: number[]
+  preferLargerTiles?: boolean
+  maxRows?: number // budget in integer grid rows. default 24.
+}
+
+function chooseLayouts(
+  ids: string[],
+  opts?: LayoutOpts
+): GridItem[] {
+  const allowed = opts?.allowedWidths ?? [12, 8, 6, 4, 3, 2] // divisors of 24
+  const maxRows = opts?.maxRows ?? 24
+  const n = ids.length
+
+  type Cand = { w: number; h: number; cols: number; rows: number; waste: number; totalH: number; score: number }
+  const feasible: Cand[] = []
+  const all: Cand[] = []
+
+  for (const w of allowed) {
+    const cols = Math.floor(GRID_COLS / w)
+    if (cols < 1) continue
+    const rows = Math.ceil(n / cols)
+    const h = Math.max(2, Math.round(w / TARGET_ASPECT)) // integer
+    const totalH = rows * h
+    const totalCells = cols * rows
+    const waste = totalCells - n
+
+    // scoring once it fits the height budget
+    const sizeScore = w * h
+    const wasteScore = 1 / (waste + 1)
+    const balanceScore = 1 / (Math.abs(cols - rows) + 1)
+    // penalize tall stacks even if under budget so 12×7 loses to 8×5 when both fit
+    const heightPenalty = 1 / (totalH + 1)
+
+    const score = sizeScore * 0.5 + wasteScore * 0.25 + balanceScore * 0.15 + heightPenalty * 0.10
+
+    const c = { w, h, cols, rows, waste, totalH, score }
+    all.push(c)
+    if (totalH <= maxRows) feasible.push(c)
+  }
+
+  const pick = (list: Cand[]): Cand =>
+    list.reduce((a, b) => (b.score > a.score ? b : a))
+
+  // prefer any that fit the row budget; otherwise pick the smallest width to force-fit
+  const best = feasible.length > 0
+    ? pick(feasible)
+    : pick(all.sort((a, b) => a.w - b.w))
+
+  const res: GridItem[] = []
+  let k = 0
+  for (let r = 0; r < best.rows && k < n; r++) {
+    const count = Math.min(best.cols, n - k)
+    const offset = Math.floor((GRID_COLS - count * best.w) / 2)
+    for (let c = 0; c < count && k < n; c++, k++) {
+      res.push({
+        i: ids[k],
+        x: offset + c * best.w,
+        y: r * best.h,
+        w: best.w,
+        h: best.h
+      })
+    }
+  }
+  return res
+}
+
 export interface ChatItem {
   id: string
   streamId: string
@@ -108,23 +179,14 @@ export const useStreamStore = create<StreamStore>()(
         addStream: (stream): void =>
           set(
             (state) => {
-              const newLayout: GridItem = {
-                i: stream.id,
-                x: (state.streams.length * 3) % 9,
-                y: Math.floor(state.streams.length / 3) * 3,
-                w: 3,
-                h: 3
-              }
-              // Apply default mute setting if not explicitly set
               const streamWithMute = {
                 ...stream,
                 isMuted: stream.isMuted !== undefined ? stream.isMuted : state.settings.defaultMuteNewStreams
               }
-              return {
-                streams: [...state.streams, streamWithMute],
-                layout: [...state.layout, newLayout],
-                hasUnsavedChanges: true
-              }
+              const streams = [...state.streams, streamWithMute]
+              const ids = [...streams.map(s => s.id), ...state.chats.map(c => c.id)]
+              const layout = chooseLayouts(ids, { maxRows: 24 })
+              return { streams, layout, hasUnsavedChanges: true }
             },
             false,
             'ADD_STREAM'
@@ -133,69 +195,18 @@ export const useStreamStore = create<StreamStore>()(
         addMultipleStreams: (streams): void =>
           set(
             (state) => {
-              // Calculate optimal grid layout for new streams
-              const totalStreams = state.streams.length + streams.length
-
-              // Grid system: 12 columns, ~12 rows visible (accounting for AppBar ~64px)
-              const maxVisibleRows = 12 // Approximate rows that fit in viewport
-
-              // Calculate optimal grid dimensions to fit all streams
-              let rowsNeeded: number
-
-              // Try different configurations to find best fit
-              const configurations = [
-                { width: 6, height: 6, perRow: 2 },   // 2×N grid (large tiles)
-                { width: 4, height: 4, perRow: 3 },   // 3×N grid (medium tiles)
-                { width: 3, height: 3, perRow: 4 },   // 4×N grid (small tiles)
-                { width: 2.4, height: 2.4, perRow: 5 }, // 5×N grid (tiny tiles)
-                { width: 2, height: 2, perRow: 6 },   // 6×N grid (micro tiles)
-                { width: 1.5, height: 1.5, perRow: 8 }, // 8×N grid (mini tiles)
-                { width: 1.2, height: 1.2, perRow: 10 } // 10×N grid (nano tiles)
-              ]
-
-              // Find the largest tile size that fits all streams in viewport
-              let bestConfig = configurations[configurations.length - 1] // Default to smallest
-
-              for (const config of configurations) {
-                rowsNeeded = Math.ceil(totalStreams / config.perRow)
-                const totalHeight = rowsNeeded * config.height
-
-                if (totalHeight <= maxVisibleRows) {
-                  bestConfig = config
-                  break
-                }
-              }
-
-              const streamWidth = bestConfig.width
-              const streamHeight = bestConfig.height
-              const streamsPerRow = bestConfig.perRow
-
-              // Re-layout ALL streams (existing + new) for consistency
-              const allStreams = [...state.streams, ...streams]
-              const allLayouts: GridItem[] = []
-
-              allStreams.forEach((stream, index) => {
-                const row = Math.floor(index / streamsPerRow)
-                const col = (index % streamsPerRow) * streamWidth
-
-                allLayouts.push({
-                  i: stream.id,
-                  x: col,
-                  y: row * streamHeight,
-                  w: streamWidth,
-                  h: streamHeight
-                })
-              })
-
-              // Apply default mute setting to new streams
               const streamsWithMute = streams.map(stream => ({
                 ...stream,
                 isMuted: stream.isMuted !== undefined ? stream.isMuted : state.settings.defaultMuteNewStreams
               }))
 
+              const allStreams = [...state.streams, ...streamsWithMute]
+              const allIds = allStreams.map(s => s.id)
+              const allLayouts = chooseLayouts(allIds, { maxRows: 24 })
+
               return {
-                streams: [...state.streams, ...streamsWithMute],
-                layout: allLayouts, // Use re-calculated layout for all streams
+                streams: allStreams,
+                layout: allLayouts,
                 hasUnsavedChanges: true
               }
             },
@@ -274,18 +285,10 @@ export const useStreamStore = create<StreamStore>()(
 
           set(
             (state) => {
-              const newLayout: GridItem = {
-                i: id,
-                x: (state.layout.length * 3) % 9,
-                y: Math.floor(state.layout.length / 3) * 3,
-                w: 2,
-                h: 3
-              }
-              return {
-                chats: [...state.chats, { id, streamId, streamType, streamName, streamIdentifier }],
-                layout: [...state.layout, newLayout],
-                hasUnsavedChanges: true
-              }
+              const chats = [...state.chats, { id, streamId, streamType, streamName, streamIdentifier }]
+              const ids = [...state.streams.map(s => s.id), ...chats.map(c => c.id)]
+              const layout = chooseLayouts(ids, { maxRows: 24 })
+              return { chats, layout, hasUnsavedChanges: true }
             },
             false,
             'ADD_CHAT'
@@ -378,131 +381,13 @@ export const useStreamStore = create<StreamStore>()(
           set(
             (state) => {
               const allItems = [...state.streams, ...state.chats]
-              const totalItems = allItems.length
+              if (allItems.length === 0) return state
 
-              if (totalItems === 0) return state
+              // Stable order: streams first by insertion, then chats by insertion
+              const ids = allItems.map(it => it.id)
+              const newLayout = chooseLayouts(ids, { maxRows: 24 })
 
-              // Advanced packing algorithm - PRIORITY: Fit ALL streams on screen
-              const GRID_COLS = 12
-              const APPBAR_HEIGHT = 64
-              const VIEWPORT_HEIGHT = window.innerHeight - APPBAR_HEIGHT
-              const VIEWPORT_WIDTH = window.innerWidth
-              const ASPECT_RATIO = 16 / 9
-
-              interface GridConfig {
-                cols: number
-                rows: number
-                itemWidth: number
-                itemHeight: number
-                fitsOnScreen: boolean
-                wastedSpace: number
-                score: number
-              }
-
-              const configurations: GridConfig[] = []
-
-              // Test all possible column configurations
-              for (let cols = 1; cols <= GRID_COLS; cols++) {
-                const rows = Math.ceil(totalItems / cols)
-                const itemWidth = GRID_COLS / cols
-                const itemHeight = itemWidth / ASPECT_RATIO
-
-                // Calculate actual pixel dimensions
-                const columnWidthPx = VIEWPORT_WIDTH / GRID_COLS
-                const itemHeightPx = itemHeight * columnWidthPx / ASPECT_RATIO
-                const totalHeightPx = rows * itemHeightPx
-
-                // Check if it fits on screen
-                const fitsOnScreen = totalHeightPx <= VIEWPORT_HEIGHT
-
-                // Only consider configurations that fit on screen
-                if (!fitsOnScreen) continue
-
-                const usedCells = totalItems
-                const totalCells = cols * rows
-                const wastedSpace = totalCells - usedCells
-
-                // Scoring: prioritize larger tiles that still fit
-                const sizeScore = itemWidth * itemHeight
-                const wasteScore = 1 / (wastedSpace + 1)
-                const balanceScore = 1 / (Math.abs(cols - rows) + 1)
-
-                // Weight size heavily since we know it fits
-                const score = sizeScore * 0.6 + wasteScore * 0.3 + balanceScore * 0.1
-
-                configurations.push({
-                  cols,
-                  rows,
-                  itemWidth,
-                  itemHeight,
-                  fitsOnScreen,
-                  wastedSpace,
-                  score
-                })
-              }
-
-              // If no configuration fits, force the smallest possible tiles
-              if (configurations.length === 0) {
-                const cols = GRID_COLS
-                const rows = Math.ceil(totalItems / cols)
-                const itemWidth = GRID_COLS / cols
-                const itemHeight = itemWidth / ASPECT_RATIO
-
-                configurations.push({
-                  cols,
-                  rows,
-                  itemWidth,
-                  itemHeight,
-                  fitsOnScreen: false,
-                  wastedSpace: cols * rows - totalItems,
-                  score: 0
-                })
-              }
-
-              // Find best configuration (largest tiles that fit)
-              const bestConfig = configurations.reduce((best, current) =>
-                current.score > best.score ? current : best
-              )
-
-              // Generate optimized layout
-              const newLayout: GridItem[] = []
-              let currentIndex = 0
-
-              for (let row = 0; row < bestConfig.rows; row++) {
-                const itemsInThisRow = Math.min(
-                  bestConfig.cols,
-                  totalItems - currentIndex
-                )
-
-                // Center last row if it's not full
-                const isLastRow = row === bestConfig.rows - 1
-                const shouldCenter = isLastRow && itemsInThisRow < bestConfig.cols
-                const offset = shouldCenter
-                  ? (GRID_COLS - itemsInThisRow * bestConfig.itemWidth) / 2
-                  : 0
-
-                for (let col = 0; col < itemsInThisRow; col++) {
-                  if (currentIndex >= totalItems) break
-
-                  const item = allItems[currentIndex]
-                  const itemId = item.id
-
-                  newLayout.push({
-                    i: itemId,
-                    x: offset + col * bestConfig.itemWidth,
-                    y: row * bestConfig.itemHeight,
-                    w: bestConfig.itemWidth,
-                    h: bestConfig.itemHeight
-                  })
-
-                  currentIndex++
-                }
-              }
-
-              return {
-                layout: newLayout,
-                hasUnsavedChanges: true
-              }
+              return { layout: newLayout, hasUnsavedChanges: true }
             },
             false,
             'AUTO_ARRANGE_STREAMS'
