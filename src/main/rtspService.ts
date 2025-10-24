@@ -69,13 +69,13 @@ class RTSPService {
 
   private setupExpressServer(): void {
     // Log all requests
-    this.expressApp.use((req, res, next) => {
+    this.expressApp.use((req, _res, next) => {
       console.log(`[RTSP] Express request: ${req.method} ${req.url}`)
       next()
     })
 
     // Enable CORS for local access
-    this.expressApp.use((req, res, next) => {
+    this.expressApp.use((_req, res, next) => {
       res.header('Access-Control-Allow-Origin', '*')
       res.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
       res.header('Access-Control-Allow-Headers', 'Content-Type')
@@ -83,7 +83,7 @@ class RTSPService {
     })
 
     // Serve HLS playlists and segments
-    this.expressApp.get('/rtsp/:streamId/:file', async (req, res) => {
+    this.expressApp.get('/rtsp/:streamId/:file', async (req, res): Promise<void> => {
       const { streamId, file } = req.params
       console.log(`[RTSP] Request for stream ${streamId}, file: ${file}`)
 
@@ -91,7 +91,8 @@ class RTSPService {
 
       if (!stream) {
         console.error(`[RTSP] Stream not found: ${streamId}`)
-        return res.status(404).send('Stream not found')
+        res.status(404).send('Stream not found')
+        return
       }
 
       const filePath = path.join(stream.outputDir, file)
@@ -123,12 +124,13 @@ class RTSPService {
     })
 
     // Health check endpoint
-    this.expressApp.get('/rtsp/:streamId/health', (req, res) => {
+    this.expressApp.get('/rtsp/:streamId/health', (req, res): void => {
       const { streamId } = req.params
       const stream = this.streams.get(streamId)
 
       if (!stream) {
-        return res.status(404).json({ status: 'not_found' })
+        res.status(404).json({ status: 'not_found' })
+        return
       }
 
       res.json({
@@ -139,7 +141,7 @@ class RTSPService {
     })
 
     // Debug endpoint to list all active streams
-    this.expressApp.get('/rtsp/debug/streams', (req, res) => {
+    this.expressApp.get('/rtsp/debug/streams', (_req, res): void => {
       const streamList = Array.from(this.streams.entries()).map(([id, stream]) => ({
         id,
         status: stream.status,
