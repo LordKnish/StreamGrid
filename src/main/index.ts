@@ -1,17 +1,41 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, protocol } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { autoUpdater } from 'electron-updater'
 import icon from '../../resources/icon.svg?asset'
 import https from 'https'
 import fs from 'fs/promises'
 import path from 'path'
 import type { SavedGrid, GridManifest } from '../shared/types/grid'
 
-// Register custom protocol for Twitch embeds
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'streamgrid', privileges: { secure: true, standard: true, corsEnabled: true } }
-])
+// Diagnostic logging
+console.log('MAIN ENTRY', {
+  type: (process as any).type,
+  versions: process.versions,
+  runAsNode: process.env.ELECTRON_RUN_AS_NODE || null
+})
+
+// Fail fast if running outside Electron main process
+if ((process as any).type && (process as any).type !== 'browser') {
+  throw new Error('Main loaded outside Electron main process')
+}
+
+// Hold reference to autoUpdater (lazy loaded)
+let autoUpdater: typeof import('electron-updater').autoUpdater | null = null
+
+// Wait for dev server to be ready
+async function waitFor(url: string, opts: { timeoutMs?: number; intervalMs?: number } = {}): Promise<void> {
+  const timeoutMs = opts.timeoutMs ?? 15000
+  const intervalMs = opts.intervalMs ?? 250
+  const start = Date.now()
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      const res = await fetch(url, { method: 'HEAD', cache: 'no-store' as any })
+      if (res.ok) return
+    } catch { /* ignore until timeout */ }
+    if (Date.now() - start > timeoutMs) throw new Error(`Dev server not reachable: ${url}`)
+    await new Promise(r => setTimeout(r, intervalMs))
+  }
+}
 
 // Function to fetch latest GitHub release version
 async function getLatestGitHubVersion(): Promise<string> {
@@ -45,61 +69,74 @@ async function getLatestGitHubVersion(): Promise<string> {
   })
 }
 
-// Configure autoUpdater
-autoUpdater.autoDownload = false
-autoUpdater.autoInstallOnAppQuit = true
+// Wire up auto-updater events (called after lazy load)
+function wireAutoUpdaterEvents(au: typeof import('electron-updater').autoUpdater): void {
+  au.autoDownload = false
+  au.autoInstallOnAppQuit = true
 
-function checkForUpdates(): void {
-  autoUpdater.checkForUpdates()
+  au.on('checking-for-update', () => {
+    console.log('Checking for updates...')
+  })
+
+  au.on('update-available', (info) => {
+    dialog
+      .showMessageBox({
+        type: 'info',
+        title: 'Update Available',
+        message: `Version ${info.version} is available. Would you like to download it?`,
+        buttons: ['Yes', 'No'],
+        defaultId: 0
+      })
+      .then((result) => {
+        if (result.response === 0) {
+          au.downloadUpdate()
+        }
+      })
+  })
+
+  au.on('update-not-available', () => {
+    console.log('No updates available')
+  })
+
+  au.on('error', (err) => {
+    // Log but don't show error dialog for update failures
+    // This prevents the Linux latest-linux.yml 404 error from being intrusive
+    console.log('Auto-updater error (non-critical):', err.message || err)
+
+    // Only show error dialog for critical update errors, not missing update files
+    if (err.message && !err.message.includes('latest-linux.yml') && !err.message.includes('404')) {
+      console.error('Critical auto-updater error:', err)
+    }
+  })
+
+  au.on('download-progress', (progressObj) => {
+    console.log(`Download progress: ${progressObj.percent}%`)
+  })
+
+  au.on('update-downloaded', (info) => {
+    dialog
+      .showMessageBox({
+        type: 'info',
+        title: 'Update Ready',
+        message: `Version ${info.version} has been downloaded. The application will now restart to install the update.`,
+        buttons: ['Restart']
+      })
+      .then(() => {
+        au.quitAndInstall(false, true)
+      })
+  })
 }
 
-// Auto updater events
-autoUpdater.on('checking-for-update', () => {
-  console.log('Checking for updates...')
-})
+async function checkForUpdates(): Promise<void> {
+  if (!autoUpdater) return
+  try {
+    await autoUpdater.checkForUpdates()
+  } catch (e: any) {
+    console.log('Update check failed (non-critical):', e?.message || e)
+  }
+}
 
-autoUpdater.on('update-available', (info) => {
-  dialog
-    .showMessageBox({
-      type: 'info',
-      title: 'Update Available',
-      message: `Version ${info.version} is available. Would you like to download it?`,
-      buttons: ['Yes', 'No'],
-      defaultId: 0
-    })
-    .then((result) => {
-      if (result.response === 0) {
-        autoUpdater.downloadUpdate()
-      }
-    })
-})
-
-autoUpdater.on('update-not-available', () => {
-  console.log('No updates available')
-})
-
-autoUpdater.on('error', (err) => {
-  console.error('Error in auto-updater:', err)
-})
-
-autoUpdater.on('download-progress', (progressObj) => {
-  console.log(`Download progress: ${progressObj.percent}%`)
-})
-
-autoUpdater.on('update-downloaded', (info) => {
-  dialog
-    .showMessageBox({
-      type: 'info',
-      title: 'Update Ready',
-      message: `Version ${info.version} has been downloaded. The application will now restart to install the update.`,
-      buttons: ['Restart']
-    })
-    .then(() => {
-      autoUpdater.quitAndInstall(false, true)
-    })
-})
-
-function createWindow(): void {
+async function createWindow(): Promise<void> {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 900,
@@ -116,7 +153,9 @@ function createWindow(): void {
     }
   })
 
-  // Intercept Twitch embed requests to add parent parameter
+  // TEMPORARILY DISABLED: Intercept Twitch embed requests to add parent parameter
+  // Commenting out to rule out webRequest interference during dev server loading
+  /*
   mainWindow.webContents.session.webRequest.onBeforeRequest(
     {
       urls: ['https://player.twitch.tv/*', 'https://embed.twitch.tv/*']
@@ -131,7 +170,7 @@ function createWindow(): void {
       // Only modify if parent is not already set
       if (!params.has('parent')) {
         // Set parent to localhost with port for development, or just localhost for production
-        const parentDomain = is.dev ? 'localhost:4000' : 'localhost'
+        const parentDomain = !app.isPackaged ? 'localhost:5173' : 'localhost'
         params.set('parent', parentDomain)
         params.set('referrer', `https://${parentDomain}/`)
 
@@ -166,27 +205,7 @@ function createWindow(): void {
       })
     }
   )
-
-  // Remove Content Security Policy since we've disabled web security for local file access
-  // This allows local files to be loaded without CSP restrictions
-  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    const responseHeaders = details.responseHeaders || {}
-
-    // Modify CSP to allow blob URLs
-    if (responseHeaders['content-security-policy'] || responseHeaders['Content-Security-Policy']) {
-      const cspHeader = responseHeaders['content-security-policy'] || responseHeaders['Content-Security-Policy']
-      if (cspHeader && Array.isArray(cspHeader)) {
-        // Add blob: to the CSP if it's not already there
-        cspHeader[0] = cspHeader[0].replace(/default-src ([^;]+)/, 'default-src $1 blob:')
-        cspHeader[0] = cspHeader[0].replace(/media-src ([^;]+)/, 'media-src $1 blob: data: file:')
-      }
-    }
-
-    callback({
-      cancel: false,
-      responseHeaders
-    })
-  })
+  */
 
   // Add right-click menu for inspect element
   mainWindow.webContents.on('context-menu', (_, props): void => {
@@ -209,21 +228,75 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
-
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
+  const isDev = !app.isPackaged
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173'
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  console.log('DEV?', isDev, 'ELECTRON_RENDERER_URL=', process.env.ELECTRON_RENDERER_URL)
+  console.log(
+    'Loading URL:',
+    isDev ? rendererUrl : 'file://' + join(__dirname, '../renderer/index.html')
+  )
+
+  // Better diagnostics
+  mainWindow.webContents.on('did-finish-load', () => console.log('did-finish-load'))
+  mainWindow.webContents.on('did-navigate', (_e, url) => console.log('did-navigate', url))
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) =>
+    console.error('did-fail-load', { code, desc, url })
+  )
+  mainWindow.webContents.on('render-process-gone', (_e, d) =>
+    console.error('render-process-gone', d)
+  )
+
+  mainWindow.once('ready-to-show', () => {
+    console.log('ready-to-show')
+    mainWindow.show()
+  })
+
+  // Force foreground in case Windows puts it behind
+  mainWindow.once('show', () => {
+    mainWindow.focus()
+    mainWindow.setAlwaysOnTop(true, 'screen-saver')
+    setTimeout(() => mainWindow.setAlwaysOnTop(false), 500)
+  })
+
+  // Fallback show in case ready-to-show never arrives
+  setTimeout(() => {
+    if (!mainWindow.isVisible()) {
+      console.warn('Force show fallback')
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  }, 3000)
+
+  // Wait for dev server and handle loading errors
+  if (isDev) {
+    try {
+      await waitFor(rendererUrl)               // ensure Vite is up
+      await mainWindow.loadURL(rendererUrl)    // first attempt
+      mainWindow.webContents.openDevTools({ mode: 'detach' })
+    } catch (err: any) {
+      const msg = String(err?.message || err)
+      console.warn('loadURL error:', msg)
+      // benign second navigation during HMR
+      if (msg.includes('ERR_ABORTED')) {
+        console.warn('loadURL aborted; continuing')
+      } else {
+        // brief retry once
+        await new Promise(r => setTimeout(r, 500))
+        try {
+          await mainWindow.loadURL(rendererUrl)
+          mainWindow.webContents.openDevTools({ mode: 'detach' })
+        } catch (e2) {
+          console.error('Second loadURL failed:', e2)
+        }
+      }
+    }
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    await mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
@@ -231,21 +304,30 @@ function createWindow(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
-  // Check for updates on app start
-  if (!is.dev) {
+  // Lazy load electron-updater only in packaged builds
+  if (app.isPackaged) {
+    const mod = await import('electron-updater')
+    autoUpdater = mod.autoUpdater
+    wireAutoUpdaterEvents(autoUpdater)
     checkForUpdates()
-    // Check for updates every hour
     setInterval(checkForUpdates, 60 * 60 * 1000)
   }
 
   // Set app user model id for windows
-  electronApp.setAppUserModelId('com.streamgrid.app')
+  app.setAppUserModelId('com.streamgrid.app')
 
   // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+    // Simple keyboard shortcut handling without toolkit
+    if (!app.isPackaged) {
+      window.webContents.on('before-input-event', (event, input) => {
+        // Reload on Ctrl/Cmd + R
+        if ((input.control || input.meta) && input.key.toLowerCase() === 'r') {
+          event.preventDefault()
+          window.webContents.reload()
+        }
+      })
+    }
   })
 
   // IPC handlers
@@ -269,7 +351,10 @@ app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       filters: [
-        { name: 'Video Files', extensions: ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv'] },
+        {
+          name: 'Video Files',
+          extensions: ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv']
+        },
         { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg', 'aac', 'm4a', 'flac'] },
         { name: 'All Files', extensions: ['*'] }
       ]
@@ -283,7 +368,6 @@ app.whenReady().then(async () => {
     }
     return null
   })
-
 
   // Grid management setup
   await setupGridManagement()
@@ -330,7 +414,7 @@ async function setupGridManagement(): Promise<void> {
       const manifestData = await fs.readFile(manifestPath, 'utf-8')
       const manifest: GridManifest = JSON.parse(manifestData)
 
-      const existingIndex = manifest.grids.findIndex(g => g.id === grid.id)
+      const existingIndex = manifest.grids.findIndex((g) => g.id === grid.id)
       const gridInfo = {
         id: grid.id,
         name: grid.name,
@@ -375,7 +459,7 @@ async function setupGridManagement(): Promise<void> {
       // Update manifest
       const manifestData = await fs.readFile(manifestPath, 'utf-8')
       const manifest: GridManifest = JSON.parse(manifestData)
-      manifest.grids = manifest.grids.filter(g => g.id !== gridId)
+      manifest.grids = manifest.grids.filter((g) => g.id !== gridId)
 
       if (manifest.currentGridId === gridId) {
         manifest.currentGridId = null
@@ -403,7 +487,7 @@ async function setupGridManagement(): Promise<void> {
       // Update manifest
       const manifestData = await fs.readFile(manifestPath, 'utf-8')
       const manifest: GridManifest = JSON.parse(manifestData)
-      const gridIndex = manifest.grids.findIndex(g => g.id === gridId)
+      const gridIndex = manifest.grids.findIndex((g) => g.id === gridId)
 
       if (gridIndex >= 0) {
         manifest.grids[gridIndex].name = newName

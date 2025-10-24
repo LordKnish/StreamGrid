@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, devtools } from 'zustand/middleware'
-import { Stream, GridItem } from '../types/stream'
+import { Stream, GridItem, AppSettings } from '../types/stream'
 import { validateImportData } from './streamSelectors'
 import { SavedGrid } from '../types/grid'
 
@@ -17,6 +17,7 @@ interface StreamStore {
   layout: GridItem[]
   chats: ChatItem[]
   lastDraggedId: string | null
+  settings: AppSettings
   // Grid management
   currentGridId: string | null
   currentGridName: string
@@ -39,6 +40,11 @@ interface StreamStore {
   addChat: (streamIdentifier: string, streamId: string, streamName: string) => string
   removeChat: (id: string) => void
   removeChatsForStream: (streamId: string) => void
+  // Settings methods
+  updateSettings: (updates: Partial<AppSettings>) => void
+  toggleGlobalMute: () => void
+  muteAllStreams: () => void
+  unmuteAllStreams: () => void
   // Grid management methods
   saveCurrentGrid: (name?: string) => Promise<SavedGrid>
   loadGrid: (gridId: string) => Promise<void>
@@ -56,6 +62,7 @@ const createInitialState = (): {
   layout: GridItem[]
   chats: ChatItem[]
   lastDraggedId: string | null
+  settings: AppSettings
   currentGridId: string | null
   currentGridName: string
   hasUnsavedChanges: boolean
@@ -66,6 +73,12 @@ const createInitialState = (): {
   layout: [],
   chats: [],
   lastDraggedId: null,
+  settings: {
+    defaultMuteNewStreams: false,
+    globalMuted: false,
+    autoStartOnLaunch: false,
+    autoStartDelay: 0
+  },
   currentGridId: null,
   currentGridName: 'Untitled Grid',
   hasUnsavedChanges: false,
@@ -100,8 +113,13 @@ export const useStreamStore = create<StreamStore>()(
                 w: 3,
                 h: 3
               }
+              // Apply default mute setting if not explicitly set
+              const streamWithMute = {
+                ...stream,
+                isMuted: stream.isMuted !== undefined ? stream.isMuted : state.settings.defaultMuteNewStreams
+              }
               return {
-                streams: [...state.streams, stream],
+                streams: [...state.streams, streamWithMute],
                 layout: [...state.layout, newLayout],
                 hasUnsavedChanges: true
               }
@@ -234,6 +252,53 @@ export const useStreamStore = create<StreamStore>()(
           return { streams, layout, chats }
         },
 
+        // Settings methods
+        updateSettings: (updates): void =>
+          set(
+            (state) => ({
+              settings: { ...state.settings, ...updates }
+            }),
+            false,
+            'UPDATE_SETTINGS'
+          ),
+
+        toggleGlobalMute: (): void =>
+          set(
+            (state) => {
+              const newGlobalMuted = !state.settings.globalMuted
+              return {
+                settings: { ...state.settings, globalMuted: newGlobalMuted },
+                // Update all streams to match global mute state
+                streams: state.streams.map(stream => ({
+                  ...stream,
+                  isMuted: newGlobalMuted
+                }))
+              }
+            },
+            false,
+            'TOGGLE_GLOBAL_MUTE'
+          ),
+
+        muteAllStreams: (): void =>
+          set(
+            (state) => ({
+              streams: state.streams.map(stream => ({ ...stream, isMuted: true })),
+              settings: { ...state.settings, globalMuted: true }
+            }),
+            false,
+            'MUTE_ALL_STREAMS'
+          ),
+
+        unmuteAllStreams: (): void =>
+          set(
+            (state) => ({
+              streams: state.streams.map(stream => ({ ...stream, isMuted: false })),
+              settings: { ...state.settings, globalMuted: false }
+            }),
+            false,
+            'UNMUTE_ALL_STREAMS'
+          ),
+
         // Grid management methods
         saveCurrentGrid: async (name?: string): Promise<SavedGrid> => {
           set({ isSaving: true }, false, 'START_SAVING')
@@ -360,12 +425,13 @@ export const useStreamStore = create<StreamStore>()(
       }),
       {
         name: 'stream-grid-storage',
-        version: 1,
+        version: 2, // Increment version for settings addition
         partialize: (state) => ({
           // Only persist these fields
           streams: state.streams,
           layout: state.layout,
           chats: state.chats,
+          settings: state.settings,
           currentGridId: state.currentGridId,
           currentGridName: state.currentGridName,
           recentGridIds: state.recentGridIds,

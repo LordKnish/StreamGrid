@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 function Versions(): JSX.Element {
   const [versions] = useState(window.electron.process.versions)
-  const appVersion = window.api.version
+  const appVersion = window.api?.version || '2.0.0'
 
   return (
     <ul className="versions">

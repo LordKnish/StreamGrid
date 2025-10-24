@@ -7,10 +7,12 @@ import React, {
   lazy,
   Suspense,
   useEffect,
-  useMemo
+  useMemo,
+  useImperativeHandle,
+  forwardRef
 } from 'react'
-import { Card, IconButton, Typography, Box, CircularProgress } from '@mui/material'
-import { PlayArrow, Stop, Close, Edit, Chat, AspectRatio, CropFree } from '@mui/icons-material'
+import { Card, IconButton, Typography, Box, CircularProgress, Tooltip } from '@mui/material'
+import { PlayArrow, Stop, Close, Edit, Chat, AspectRatio, CropFree, VolumeOff, VolumeUp } from '@mui/icons-material'
 import { Stream } from '../types/stream'
 import { StreamErrorBoundary } from './StreamErrorBoundary'
 import { useStreamStore } from '../store/useStreamStore'
@@ -153,7 +155,13 @@ interface StreamCardProps {
   onAddChat?: (videoId: string, streamId: string, streamName: string) => void
 }
 
-const StreamCard: React.FC<StreamCardProps> = memo(({ stream, onRemove, onEdit, onAddChat }) => {
+export interface StreamCardRef {
+  play: () => void
+  stop: () => void
+}
+
+const StreamCard = memo(
+  forwardRef<StreamCardRef, StreamCardProps>(({ stream, onRemove, onEdit, onAddChat }, ref) => {
   const { removeChatsForStream, updateStream } = useStreamStore()
   const [isPlaying, setIsPlaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -161,6 +169,7 @@ const StreamCard: React.FC<StreamCardProps> = memo(({ stream, onRemove, onEdit, 
   const [logoUrl, setLogoUrl] = useState<string>('')
   const errorTimerRef = useRef<NodeJS.Timeout | null>(null)
   const currentFitMode = stream.fitMode || 'contain'
+  const currentMuteState = stream.isMuted || false
 
   // Generate avatar data URL if no logo URL is provided
   const generatedAvatarUrl = useMemo(() => {
@@ -230,6 +239,26 @@ const StreamCard: React.FC<StreamCardProps> = memo(({ stream, onRemove, onEdit, 
     }, 0)
   }, [cleanUrl])
 
+  // Expose play/stop methods via ref
+  useImperativeHandle(ref, () => ({
+    play: handlePlay,
+    stop: handleStop
+  }))
+
+  // Listen for auto-start event
+  useEffect(() => {
+    const handleAutoStart = (): void => {
+      if (!isPlaying) {
+        handlePlay()
+      }
+    }
+
+    window.addEventListener('auto-start-streams', handleAutoStart)
+    return (): void => {
+      window.removeEventListener('auto-start-streams', handleAutoStart)
+    }
+  }, [isPlaying, handlePlay])
+
   const handleStop = useCallback(async (): Promise<void> => {
     setIsPlaying(false)
     setError(null)
@@ -284,6 +313,11 @@ const StreamCard: React.FC<StreamCardProps> = memo(({ stream, onRemove, onEdit, 
     updateStream(stream.id, { fitMode: newFitMode })
   }, [currentFitMode, stream.id, updateStream])
 
+  const handleToggleMute = useCallback(() => {
+    const newMuteState = !currentMuteState
+    updateStream(stream.id, { isMuted: newMuteState })
+  }, [currentMuteState, stream.id, updateStream])
+
   return (
     <Card
       sx={{
@@ -330,22 +364,40 @@ const StreamCard: React.FC<StreamCardProps> = memo(({ stream, onRemove, onEdit, 
         <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
           {isPlaying && (
             <>
-              <IconButton
-                onClick={handleToggleFitMode}
-                sx={{
-                  backgroundColor: currentFitMode === 'cover' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)',
-                  color: 'white',
-                  '&:hover': {
-                    backgroundColor: currentFitMode === 'cover' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.6)',
-                    color: 'primary.main'
-                  },
-                  padding: '4px'
-                }}
-                size="small"
-                title={currentFitMode === 'contain' ? 'Switch to Fill Mode' : 'Switch to Fit Mode'}
-              >
-                {currentFitMode === 'contain' ? <CropFree fontSize="small" /> : <AspectRatio fontSize="small" />}
-              </IconButton>
+              <Tooltip title={currentMuteState ? 'Unmute' : 'Mute'}>
+                <IconButton
+                  onClick={handleToggleMute}
+                  sx={{
+                    backgroundColor: currentMuteState ? 'rgba(211, 47, 47, 0.4)' : 'rgba(0,0,0,0.4)',
+                    color: 'white',
+                    '&:hover': {
+                      backgroundColor: currentMuteState ? 'rgba(211, 47, 47, 0.6)' : 'rgba(0,0,0,0.6)',
+                      color: currentMuteState ? 'error.main' : 'primary.main'
+                    },
+                    padding: '4px'
+                  }}
+                  size="small"
+                >
+                  {currentMuteState ? <VolumeOff fontSize="small" /> : <VolumeUp fontSize="small" />}
+                </IconButton>
+              </Tooltip>
+              <Tooltip title={currentFitMode === 'contain' ? 'Switch to Fill Mode' : 'Switch to Fit Mode'}>
+                <IconButton
+                  onClick={handleToggleFitMode}
+                  sx={{
+                    backgroundColor: currentFitMode === 'cover' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)',
+                    color: 'white',
+                    '&:hover': {
+                      backgroundColor: currentFitMode === 'cover' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.6)',
+                      color: 'primary.main'
+                    },
+                    padding: '4px'
+                  }}
+                  size="small"
+                >
+                  {currentFitMode === 'contain' ? <CropFree fontSize="small" /> : <AspectRatio fontSize="small" />}
+                </IconButton>
+              </Tooltip>
               <IconButton
                 onClick={handleStop}
                 sx={{
@@ -545,7 +597,7 @@ const StreamCard: React.FC<StreamCardProps> = memo(({ stream, onRemove, onEdit, 
                     }}
                   >
                     <iframe
-                      src={`https://player.twitch.tv/?channel=${channelName}&muted=true`}
+                      src={`https://player.twitch.tv/?channel=${channelName}&muted=${currentMuteState}`}
                       width="100%"
                       height="100%"
                       frameBorder="0"
@@ -593,6 +645,7 @@ const StreamCard: React.FC<StreamCardProps> = memo(({ stream, onRemove, onEdit, 
                       width="100%"
                       height="100%"
                       playing={true}
+                      muted={currentMuteState}
                       controls={true}
                       onReady={handleReady}
                       onError={handleError}
@@ -656,8 +709,10 @@ const StreamCard: React.FC<StreamCardProps> = memo(({ stream, onRemove, onEdit, 
       )}
     </Card>
   )
-})
+  })
+)
 
 StreamCard.displayName = 'StreamCard'
 
 export { StreamCard }
+export type { StreamCardProps }

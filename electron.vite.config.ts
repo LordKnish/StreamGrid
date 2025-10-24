@@ -4,7 +4,12 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        external: ['electron-updater']
+      }
+    }
   },
   preload: {
     plugins: [externalizeDepsPlugin()]
@@ -24,23 +29,12 @@ export default defineConfig({
       // Enable code splitting
       rollupOptions: {
         output: {
-          // Manual chunks for better code splitting
+          // Simplified manual chunks - only vendor packages
           manualChunks: {
-            // Vendor chunks
             'react-vendor': ['react', 'react-dom'],
             'mui-vendor': ['@mui/material', '@mui/icons-material'],
             'player-vendor': ['react-player'],
-            'utils': ['lodash', 'uuid', 'jdenticon'],
-            // Feature chunks
-            'performance': [
-              './src/renderer/src/hooks/usePerformanceMonitor',
-              './src/renderer/src/hooks/usePlayerPool',
-              'web-vitals'
-            ],
-            'virtual-grid': [
-              './src/renderer/src/components/VirtualStreamGrid',
-              'react-window'
-            ]
+            'utils': ['lodash', 'uuid', 'jdenticon', 'web-vitals', 'react-window']
           },
           // Use dynamic imports for better splitting
           chunkFileNames: (chunkInfo) => {
@@ -51,12 +45,12 @@ export default defineConfig({
       },
       // Optimize chunk size
       chunkSizeWarningLimit: 1000,
-      // Enable minification
+      // Enable minification but keep console/debugger for debugging
       minify: 'terser',
       terserOptions: {
         compress: {
-          drop_console: true,
-          drop_debugger: true
+          drop_console: false,
+          drop_debugger: false
         }
       },
       // Enable source maps for production debugging

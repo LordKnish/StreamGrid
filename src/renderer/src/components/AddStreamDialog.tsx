@@ -14,7 +14,9 @@ import {
   Typography,
   Paper,
   IconButton,
-  InputAdornment
+  InputAdornment,
+  FormControlLabel,
+  Checkbox
 } from '@mui/material'
 import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import { Stream, StreamFormData } from '../types/stream'
@@ -40,7 +42,8 @@ export const AddStreamDialog: React.FC<AddStreamDialogProps> = ({
   const [formData, setFormData] = useState<StreamFormData>({
     name: '',
     logoUrl: '',
-    streamUrl: ''
+    streamUrl: '',
+    startMuted: false
   })
 
   const extractStreamInfo = useCallback((url: string): { type: string; id: string | null } => {
@@ -173,6 +176,10 @@ export const AddStreamDialog: React.FC<AddStreamDialogProps> = ({
 
   // Handle local file selection
   const handleBrowseFile = useCallback(async (): Promise<void> => {
+    if (!window.api?.showOpenDialog) {
+      console.error('File dialog API not available')
+      return
+    }
     const result = await window.api.showOpenDialog()
     if (result) {
       const { filePath, fileUrl } = result
@@ -304,7 +311,8 @@ export const AddStreamDialog: React.FC<AddStreamDialogProps> = ({
         setFormData({
           name: editStream.name,
           logoUrl: editStream.logoUrl,
-          streamUrl: cleanUrl
+          streamUrl: cleanUrl,
+          startMuted: editStream.isMuted || false
         })
         if (editStream.logoUrl) {
           trySetLogoPreview(editStream.logoUrl)
@@ -312,7 +320,7 @@ export const AddStreamDialog: React.FC<AddStreamDialogProps> = ({
         setStreamPreview(cleanUrl)
         setStreamType(type)
       } else {
-        setFormData({ name: '', logoUrl: '', streamUrl: '' })
+        setFormData({ name: '', logoUrl: '', streamUrl: '', startMuted: false })
         setLogoPreview('')
         setStreamPreview('')
         setStreamType('')
@@ -522,6 +530,25 @@ export const AddStreamDialog: React.FC<AddStreamDialogProps> = ({
               </Paper>
             )}
           </Box>
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={formData.startMuted || false}
+                onChange={(e) => setFormData((prev) => ({ ...prev, startMuted: e.target.checked }))}
+                color="primary"
+              />
+            }
+            label={
+              <Box>
+                <Typography variant="body2">Start muted</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Stream will start with audio muted
+                </Typography>
+              </Box>
+            }
+            sx={{ mt: 1, alignItems: 'flex-start' }}
+          />
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
