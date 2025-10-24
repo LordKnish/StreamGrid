@@ -46,6 +46,7 @@ interface StreamStore {
   toggleGlobalMute: () => void
   muteAllStreams: () => void
   unmuteAllStreams: () => void
+  autoArrangeStreams: () => void
   // Grid management methods
   saveCurrentGrid: (name?: string) => Promise<SavedGrid>
   loadGrid: (gridId: string) => Promise<void>
@@ -371,6 +372,140 @@ export const useStreamStore = create<StreamStore>()(
             }),
             false,
             'UNMUTE_ALL_STREAMS'
+          ),
+
+        autoArrangeStreams: (): void =>
+          set(
+            (state) => {
+              const allItems = [...state.streams, ...state.chats]
+              const totalItems = allItems.length
+
+              if (totalItems === 0) return state
+
+              // Advanced packing algorithm - PRIORITY: Fit ALL streams on screen
+              const GRID_COLS = 12
+              const APPBAR_HEIGHT = 64
+              const VIEWPORT_HEIGHT = window.innerHeight - APPBAR_HEIGHT
+              const VIEWPORT_WIDTH = window.innerWidth
+              const ASPECT_RATIO = 16 / 9
+
+              interface GridConfig {
+                cols: number
+                rows: number
+                itemWidth: number
+                itemHeight: number
+                fitsOnScreen: boolean
+                wastedSpace: number
+                score: number
+              }
+
+              const configurations: GridConfig[] = []
+
+              // Test all possible column configurations
+              for (let cols = 1; cols <= GRID_COLS; cols++) {
+                const rows = Math.ceil(totalItems / cols)
+                const itemWidth = GRID_COLS / cols
+                const itemHeight = itemWidth / ASPECT_RATIO
+
+                // Calculate actual pixel dimensions
+                const columnWidthPx = VIEWPORT_WIDTH / GRID_COLS
+                const itemHeightPx = itemHeight * columnWidthPx / ASPECT_RATIO
+                const totalHeightPx = rows * itemHeightPx
+
+                // Check if it fits on screen
+                const fitsOnScreen = totalHeightPx <= VIEWPORT_HEIGHT
+
+                // Only consider configurations that fit on screen
+                if (!fitsOnScreen) continue
+
+                const usedCells = totalItems
+                const totalCells = cols * rows
+                const wastedSpace = totalCells - usedCells
+
+                // Scoring: prioritize larger tiles that still fit
+                const sizeScore = itemWidth * itemHeight
+                const wasteScore = 1 / (wastedSpace + 1)
+                const balanceScore = 1 / (Math.abs(cols - rows) + 1)
+
+                // Weight size heavily since we know it fits
+                const score = sizeScore * 0.6 + wasteScore * 0.3 + balanceScore * 0.1
+
+                configurations.push({
+                  cols,
+                  rows,
+                  itemWidth,
+                  itemHeight,
+                  fitsOnScreen,
+                  wastedSpace,
+                  score
+                })
+              }
+
+              // If no configuration fits, force the smallest possible tiles
+              if (configurations.length === 0) {
+                const cols = GRID_COLS
+                const rows = Math.ceil(totalItems / cols)
+                const itemWidth = GRID_COLS / cols
+                const itemHeight = itemWidth / ASPECT_RATIO
+
+                configurations.push({
+                  cols,
+                  rows,
+                  itemWidth,
+                  itemHeight,
+                  fitsOnScreen: false,
+                  wastedSpace: cols * rows - totalItems,
+                  score: 0
+                })
+              }
+
+              // Find best configuration (largest tiles that fit)
+              const bestConfig = configurations.reduce((best, current) =>
+                current.score > best.score ? current : best
+              )
+
+              // Generate optimized layout
+              const newLayout: GridItem[] = []
+              let currentIndex = 0
+
+              for (let row = 0; row < bestConfig.rows; row++) {
+                const itemsInThisRow = Math.min(
+                  bestConfig.cols,
+                  totalItems - currentIndex
+                )
+
+                // Center last row if it's not full
+                const isLastRow = row === bestConfig.rows - 1
+                const shouldCenter = isLastRow && itemsInThisRow < bestConfig.cols
+                const offset = shouldCenter
+                  ? (GRID_COLS - itemsInThisRow * bestConfig.itemWidth) / 2
+                  : 0
+
+                for (let col = 0; col < itemsInThisRow; col++) {
+                  if (currentIndex >= totalItems) break
+
+                  const item = allItems[currentIndex]
+                  const itemId = item.id
+
+                  newLayout.push({
+                    i: itemId,
+                    x: offset + col * bestConfig.itemWidth,
+                    y: row * bestConfig.itemHeight,
+                    w: bestConfig.itemWidth,
+                    h: bestConfig.itemHeight
+                  })
+
+                  currentIndex++
+                }
+              }
+
+              return {
+                layout: newLayout,
+                hasUnsavedChanges: true
+              }
+            },
+            false,
+            'AUTO_ARRANGE_STREAMS'
           ),
 
         // Grid management methods

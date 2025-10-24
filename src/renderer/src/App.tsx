@@ -16,7 +16,7 @@ import {
   IconButton,
   Tooltip
 } from '@mui/material'
-import { Add, GitHub, VolumeOff, VolumeUp, Settings } from '@mui/icons-material'
+import { Add, GitHub, VolumeOff, VolumeUp, Settings, GridOn } from '@mui/icons-material'
 import StreamGridLogo from './assets/StreamGrid.svg'
 import { v4 as uuidv4 } from 'uuid'
 import { StreamGrid } from './components/StreamGrid'
@@ -24,6 +24,7 @@ import { AddStreamDialog } from './components/AddStreamDialog'
 import { GridSelector } from './components/GridSelector'
 import { GridManagementDialog } from './components/GridManagementDialog'
 import { SettingsDialog } from './components/SettingsDialog'
+import { AutoArrangeDialog } from './components/AutoArrangeDialog'
 import { useDebouncedStore } from './hooks/useDebouncedStore'
 import { Stream, StreamFormData } from './types/stream'
 import { LoadingScreen } from './components/LoadingScreen'
@@ -38,6 +39,7 @@ export const App: React.FC = () => {
   const [newGridName, setNewGridName] = useState('')
   const [gridManagementOpen, setGridManagementOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [autoArrangeDialogOpen, setAutoArrangeDialogOpen] = useState(false)
   const autoStartTriggeredRef = useRef(false)
 
   const {
@@ -61,13 +63,19 @@ export const App: React.FC = () => {
     streamUpdateDebounceMs: 500
   })
 
-  const { settings, toggleGlobalMute } = useStreamStore()
+  const { settings, toggleGlobalMute, autoArrangeStreams } = useStreamStore()
   const [editingStream, setEditingStream] = useState<Stream | undefined>(undefined)
 
   // Define all callbacks before any conditional returns
   const handleGlobalMuteToggle = useCallback(() => {
     toggleGlobalMute()
   }, [toggleGlobalMute])
+
+  const handleAutoArrange = useCallback(async () => {
+    autoArrangeStreams()
+    // Save immediately after auto-arrange
+    await saveNow()
+  }, [autoArrangeStreams, saveNow])
 
   // Auto-start streams on launch
   useEffect(() => {
@@ -245,6 +253,25 @@ export const App: React.FC = () => {
             </IconButton>
           </Tooltip>
 
+          {/* Auto-Arrange Button */}
+          <Tooltip title="Auto-Arrange Streams">
+            <IconButton
+              onClick={() => setAutoArrangeDialogOpen(true)}
+              disabled={streams.length === 0 && chats.length === 0}
+              sx={{
+                color: 'text.primary',
+                '&:hover': {
+                  backgroundColor: 'action.hover'
+                },
+                '&.Mui-disabled': {
+                  color: 'action.disabled'
+                }
+              }}
+            >
+              <GridOn />
+            </IconButton>
+          </Tooltip>
+
           {/* Settings Button */}
           <Tooltip title="Settings">
             <IconButton
@@ -407,6 +434,13 @@ export const App: React.FC = () => {
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+      />
+
+      <AutoArrangeDialog
+        open={autoArrangeDialogOpen}
+        onClose={() => setAutoArrangeDialogOpen(false)}
+        onConfirm={handleAutoArrange}
+        streamCount={streams.length + chats.length}
       />
     </Box>
   )
