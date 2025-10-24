@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -11,9 +11,13 @@ import {
   FormControlLabel,
   Slider,
   Divider,
-  IconButton
+  IconButton,
+  TextField,
+  Alert,
+  Snackbar,
+  InputAdornment
 } from '@mui/material'
-import { Close, VolumeOff, VolumeUp, PlayArrow } from '@mui/icons-material'
+import { Close, VolumeUp, PlayArrow, Api, ContentCopy, Refresh, CheckCircle } from '@mui/icons-material'
 import { useStreamStore } from '../store/useStreamStore'
 
 interface SettingsDialogProps {
@@ -23,6 +27,25 @@ interface SettingsDialogProps {
 
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const { settings, updateSettings } = useStreamStore()
+  const [apiServerRunning, setApiServerRunning] = useState(false)
+  const [copySuccess, setCopySuccess] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
+
+  // Check API server status on mount and when dialog opens
+  useEffect(() => {
+    if (open) {
+      checkApiStatus()
+    }
+  }, [open])
+
+  const checkApiStatus = async (): Promise<void> => {
+    try {
+      const status = await window.api.getApiServerStatus()
+      setApiServerRunning(status.running)
+    } catch (error) {
+      console.error('Failed to check API status:', error)
+    }
+  }
 
   const handleDefaultMuteChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
     updateSettings({ defaultMuteNewStreams: event.target.checked })
@@ -34,6 +57,75 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose })
 
   const handleDelayChange = (_event: Event, value: number | number[]): void => {
     updateSettings({ autoStartDelay: value as number })
+  }
+
+  const handleApiEnabledChange = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const enabled = event.target.checked
+    updateSettings({ apiEnabled: enabled })
+
+    try {
+      if (enabled) {
+        // Generate API key if not exists
+        let apiKey = settings.apiKey
+        if (!apiKey) {
+          apiKey = await window.api.generateApiKey()
+          updateSettings({ apiKey })
+        }
+
+        const result = await window.api.startApiServer({
+          port: settings.apiPort,
+          apiKey: apiKey,
+          enabled: true
+        })
+
+        if (result.success) {
+          setApiServerRunning(true)
+          setApiError(null)
+        } else {
+          setApiError(result.error || 'Failed to start API server')
+          updateSettings({ apiEnabled: false })
+        }
+      } else {
+        await window.api.stopApiServer()
+        setApiServerRunning(false)
+        setApiError(null)
+      }
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : 'Unknown error')
+      updateSettings({ apiEnabled: false })
+    }
+  }
+
+  const handlePortChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+    const port = parseInt(event.target.value, 10)
+    if (!isNaN(port) && port > 0 && port < 65536) {
+      updateSettings({ apiPort: port })
+    }
+  }
+
+  const handleGenerateApiKey = async (): Promise<void> => {
+    try {
+      const newKey = await window.api.generateApiKey()
+      updateSettings({ apiKey: newKey })
+
+      // Restart server if running
+      if (settings.apiEnabled && apiServerRunning) {
+        await window.api.restartApiServer({
+          port: settings.apiPort,
+          apiKey: newKey,
+          enabled: true
+        })
+      }
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : 'Failed to generate API key')
+    }
+  }
+
+  const handleCopyApiKey = (): void => {
+    if (settings.apiKey) {
+      navigator.clipboard.writeText(settings.apiKey)
+      setCopySuccess(true)
+    }
   }
 
   return (
@@ -156,6 +248,119 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose })
           )}
         </Box>
 
+        <Divider sx={{ my: 3 }} />
+
+        {/* API Settings Section */}
+        <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Api color="primary" />
+            <Typography variant="subtitle1" fontWeight="bold">
+              REST API Settings
+            </Typography>
+          </Box>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.apiEnabled}
+                onChange={handleApiEnabledChange}
+                color="primary"
+              />
+            }
+            label={
+              <Box>
+                <Typography variant="body2">Enable REST API</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Allow external control via HTTP API
+                </Typography>
+              </Box>
+            }
+            sx={{ mb: 2, alignItems: 'flex-start' }}
+          />
+
+          {settings.apiEnabled && (
+            <Box
+              sx={{
+                mt: 2,
+                p: 2,
+                bgcolor: 'action.hover',
+                borderRadius: 1,
+                border: '1px solid',
+                borderColor: 'divider'
+              }}
+            >
+              {/* API Server Status */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <CheckCircle
+                  sx={{
+                    color: apiServerRunning ? 'success.main' : 'text.disabled',
+                    fontSize: 20
+                  }}
+                />
+                <Typography variant="body2" color={apiServerRunning ? 'success.main' : 'text.secondary'}>
+                  {apiServerRunning ? 'API Server Running' : 'API Server Stopped'}
+                </Typography>
+              </Box>
+
+              {/* Port Configuration */}
+              <TextField
+                label="API Port"
+                type="number"
+                value={settings.apiPort}
+                onChange={handlePortChange}
+                size="small"
+                fullWidth
+                sx={{ mb: 2 }}
+                helperText={`API URL: http://localhost:${settings.apiPort}`}
+              />
+
+              {/* API Key */}
+              <TextField
+                label="API Key"
+                value={settings.apiKey || 'Not generated'}
+                size="small"
+                fullWidth
+                InputProps={{
+                  readOnly: true,
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={handleCopyApiKey}
+                        size="small"
+                        disabled={!settings.apiKey}
+                        title="Copy API Key"
+                      >
+                        <ContentCopy fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        onClick={handleGenerateApiKey}
+                        size="small"
+                        title="Generate New API Key"
+                      >
+                        <Refresh fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
+                sx={{ mb: 1 }}
+              />
+
+              <Typography variant="caption" color="warning.main" sx={{ display: 'block', mb: 1 }}>
+                ⚠️ Keep your API key secure. Regenerating will invalidate the old key.
+              </Typography>
+
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => window.api.openExternal('https://github.com/LordKnish/StreamGrid/blob/main/docs/API.md')}
+                sx={{ textTransform: 'none' }}
+              >
+                View API Documentation
+              </Button>
+            </Box>
+          )}
+        </Box>
+
         <Box
           sx={{
             mt: 3,
@@ -185,6 +390,25 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose })
           Done
         </Button>
       </DialogActions>
+
+      {/* Success Snackbar */}
+      <Snackbar
+        open={copySuccess}
+        autoHideDuration={2000}
+        onClose={() => setCopySuccess(false)}
+        message="API key copied to clipboard"
+      />
+
+      {/* Error Snackbar */}
+      <Snackbar
+        open={!!apiError}
+        autoHideDuration={4000}
+        onClose={() => setApiError(null)}
+      >
+        <Alert severity="error" onClose={() => setApiError(null)}>
+          {apiError}
+        </Alert>
+      </Snackbar>
     </Dialog>
   )
 }

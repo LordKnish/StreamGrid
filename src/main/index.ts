@@ -6,6 +6,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import type { SavedGrid, GridManifest } from '../shared/types/grid'
 import { rtspService } from './rtspService'
+import { startApiServer, stopApiServer, restartApiServer, getServerStatus, generateApiKey } from './apiServer'
 
 // Diagnostic logging
 console.log('MAIN ENTRY', {
@@ -470,6 +471,45 @@ app.whenReady().then(async () => {
     return await rtspService.stopStream(streamId)
   })
 
+  // API server handlers
+  ipcMain.handle('start-api-server', async (_, config: { port: number; apiKey: string; enabled: boolean }) => {
+    try {
+      await startApiServer(config)
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to start API server:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle('stop-api-server', async () => {
+    try {
+      await stopApiServer()
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to stop API server:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle('restart-api-server', async (_, config: { port: number; apiKey: string; enabled: boolean }) => {
+    try {
+      await restartApiServer(config)
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to restart API server:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle('get-api-server-status', async () => {
+    return getServerStatus()
+  })
+
+  ipcMain.handle('generate-api-key', async () => {
+    return generateApiKey()
+  })
+
   // Grid management setup
   await setupGridManagement()
 
@@ -641,6 +681,9 @@ app.on('before-quit', async (event) => {
 
     // Stop all RTSP streams
     await rtspService.stopAllStreams()
+
+    // Stop API server
+    await stopApiServer().catch(err => console.error('Error stopping API server:', err))
 
     // Send save request to all windows
     for (const window of windows) {

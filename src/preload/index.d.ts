@@ -24,6 +24,12 @@ declare global {
       rtspStartStream: (streamId: string, rtspUrl: string) => Promise<{ success: boolean; url?: string; port?: number; error?: string }>
       rtspStopStream: (streamId: string) => Promise<{ success: boolean; error?: string }>
       rtspCheckFfmpeg: () => Promise<{ available: boolean }>
+      // API server management
+      startApiServer: (config: { port: number; apiKey: string; enabled: boolean }) => Promise<{ success: boolean; error?: string }>
+      stopApiServer: () => Promise<{ success: boolean; error?: string }>
+      restartApiServer: (config: { port: number; apiKey: string; enabled: boolean }) => Promise<{ success: boolean; error?: string }>
+      getApiServerStatus: () => Promise<{ running: boolean; config: { port: number; apiKey: string; enabled: boolean } | null }>
+      generateApiKey: () => Promise<string>
       // App lifecycle events
       onAppBeforeQuit: (callback: () => void) => () => void
     }

@@ -37,4 +37,9 @@ export interface AppSettings {
   // Auto-start settings
   autoStartOnLaunch: boolean
   autoStartDelay: number // 0-5 seconds
+
+  // API settings
+  apiEnabled: boolean
+  apiPort: number
+  apiKey: string
 }

@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "name": "Streamgrid",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ],
+  "size": 0.0022039413452148438,
+  "filesCount": 9,
+  "presets": {
+    "requestType": "http",
+    "requestUrl": "0.0.0.0:3737"
+  }
+}

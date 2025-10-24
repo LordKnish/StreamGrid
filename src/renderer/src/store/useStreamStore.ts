@@ -150,7 +150,10 @@ const createInitialState = (): {
     defaultMuteNewStreams: false,
     globalMuted: false,
     autoStartOnLaunch: false,
-    autoStartDelay: 0
+    autoStartDelay: 0,
+    apiEnabled: false,
+    apiPort: 3737,
+    apiKey: ''
   },
   currentGridId: null,
   currentGridName: 'Untitled Grid',

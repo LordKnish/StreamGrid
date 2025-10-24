@@ -26,6 +26,17 @@ const api = {
     ipcRenderer.invoke('rtspStopStream', streamId),
   rtspCheckFfmpeg: (): Promise<{ available: boolean; version?: string; path?: string }> =>
     ipcRenderer.invoke('rtspCheckFfmpeg'),
+  // API server management
+  startApiServer: (config: { port: number; apiKey: string; enabled: boolean }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('start-api-server', config),
+  stopApiServer: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('stop-api-server'),
+  restartApiServer: (config: { port: number; apiKey: string; enabled: boolean }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('restart-api-server', config),
+  getApiServerStatus: (): Promise<{ running: boolean; config: { port: number; apiKey: string; enabled: boolean } | null }> =>
+    ipcRenderer.invoke('get-api-server-status'),
+  generateApiKey: (): Promise<string> =>
+    ipcRenderer.invoke('generate-api-key'),
   // App lifecycle events
   onAppBeforeQuit: (callback: () => void): (() => void) => {
     const listener = (): void => callback()

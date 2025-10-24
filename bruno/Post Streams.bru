@@ -1,0 +1,30 @@
+meta {
+  name: Post Streams
+  type: http
+  seq: 4
+}
+
+post {
+  url: 0.0.0.0:3737/api/streams
+  body: json
+  auth: inherit
+}
+
+headers {
+  Authorization: Bearer {{apiKey}}
+}
+
+body:json {
+  {
+    "name": "My Stream",
+    "streamUrl": "https://example.com/stream.m3u8",
+    "logoUrl": "https://example.com/logo.png",
+    "isMuted": false,
+    "fitMode": "contain"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
