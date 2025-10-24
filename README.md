@@ -7,6 +7,8 @@
 
 StreamGrid revolutionizes multi-stream viewing by giving you complete freedom over your layout. Want a massive main stream surrounded by smaller feeds? Or five equally-sized streams? Or any other arrangement you can imagine? StreamGrid makes it possible. Built with Electron, React, and TypeScript, it's the perfect solution for watching multiple streams exactly the way you want.
 
+**📚 Documentation:** [API Reference](docs/API.md) | [Bruno API Collection](bruno/README.md)
+
 https://github.com/user-attachments/assets/1e098512-ed39-4094-ab13-84c144e60f7c
 
 ## ✨ Features
@@ -26,28 +28,45 @@ https://github.com/user-attachments/assets/1e098512-ed39-4094-ab13-84c144e60f7c
   - Remove streams with a single click
   - Persistent layout saving with aggressive auto-save
   - Export and Import your stream setups to share with friends
-- **Grid Management System** (New in v1.2.0):
+- **Grid Management System**:
   - Save multiple grid configurations
   - Switch between different saved layouts instantly
   - Rename and organize your grid presets
   - Perfect for different viewing scenarios (gaming, monitoring, events)
 - **Responsive Design**: Automatically adjusts to window size while maintaining video aspect ratios
 - **Stream Platform Support**:
-  - **Local Files** (New in v1.2.0): Play video files directly from your computer
+  - **Local Files**: Play video files directly from your computer
   - **YouTube**: Support for standard videos, live streams, and shorts
   - **Twitch**: Support for channel live streams
-  - **RTSP Streams** (New in v1.2.1): Support for RTSP/RTSPS camera and streaming sources
+  - **RTSP Streams** (New in v2.0.0): Support for RTSP/RTSPS camera and streaming sources with automatic transcoding
+    - Requires FFmpeg installation
+    - Supports authentication (username/password in URL)
+    - Low-latency HLS transcoding
+    - Multiple concurrent RTSP streams
+    - Automatic retry on connection loss
   - **HLS Support**: Compatible with HTTP Live Streaming (HLS) video sources
   - **MPEG-DASH Support**: Compatible with Dynamic Adaptive Streaming over HTTP (DASH) video sources
 - **Chat Integration**:
   - YouTube chat for live streams and videos
   - Twitch chat for live streams
   - Draggable and resizable chat windows
-- **Performance Optimized** (Enhanced in v1.2.0):
-  - Virtual grid rendering for smooth performance with many streams
-  - Intelligent player pooling to reduce memory usage
-  - Optimized startup times and resource management
 - **Cross-Platform**: Available for Windows, macOS, and Linux
+- **REST API for Automation** (New in v2.0.0):
+  - Full programmatic control via REST API
+  - Add, update, and remove streams remotely
+  - Manage grid configurations programmatically
+  - API key authentication with rate limiting
+  - [API documentation](docs/API.md) with [Bruno test collection](bruno/README.md)
+- **M3U Playlist Import** (New in v2.0.0):
+  - Import M3U/M3U8 playlists with one click
+  - Automatic grid arrangement with intelligent layout
+- **Advanced Sound Management** (New in v2.0.0):
+  - Global mute/unmute all streams
+  - Per-stream audio controls
+  - Auto-start streams muted option
+- **Auto-Start & Auto-Restart** (New in v2.0.0):
+  - Automatically play all streams on app launch
+  - Automatic retry for failed streams with exponential backoff
 
 ## 🚀 Getting Started
 
@@ -55,9 +74,10 @@ https://github.com/user-attachments/assets/1e098512-ed39-4094-ab13-84c144e60f7c
 
 1. Visit the [Releases](https://github.com/LordKnish/StreamGrid/releases) section
 2. Download the latest version for your platform:
-   - **Windows**: `streamgrid-1.2.0-setup.exe`
-   - **macOS**: `streamgrid-1.2.0.dmg`
-   - **Linux**: `streamgrid-1.2.0.AppImage`
+   - **Windows**: `streamgrid-2.0.0-win-x64.exe`
+   - **macOS (Intel)**: `streamgrid-2.0.0-mac-x64.dmg`
+   - **macOS (Apple Silicon)**: `streamgrid-2.0.0-mac-arm64.dmg`
+   - **Linux**: `streamgrid-2.0.0-linux-x64.AppImage`
 3. Install and run StreamGrid
 
 ### Option 2: Build from Source
@@ -65,7 +85,31 @@ https://github.com/user-attachments/assets/1e098512-ed39-4094-ab13-84c144e60f7c
 #### Prerequisites
 - Node.js 18.x or higher
 - npm 9.x or higher
-- FFmpeg (required for RTSP streaming support)
+- **FFmpeg** (required for RTSP streaming support)
+
+##### Installing FFmpeg
+
+**Windows:**
+1. Download FFmpeg from [ffmpeg.org](https://ffmpeg.org/download.html)
+2. Extract to `C:\ffmpeg`
+3. Add `C:\ffmpeg\bin` to your system PATH
+4. Or use Chocolatey: `choco install ffmpeg`
+
+**macOS:**
+```bash
+brew install ffmpeg
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt update
+sudo apt install ffmpeg
+```
+
+**Linux (Fedora/RHEL):**
+```bash
+sudo yum install ffmpeg
+```
 
 #### Steps
 
@@ -97,9 +141,71 @@ npm run build:linux  # Linux
 ```
 
 5. **Find your built application**
-   - Windows: `dist/streamgrid-1.2.0-setup.exe`
-   - macOS: `dist/streamgrid-1.2.0.dmg`
-   - Linux: `dist/streamgrid-1.2.0.AppImage`
+   - Windows: `dist/streamgrid-2.0.0-win-x64.exe`
+   - macOS: `dist/streamgrid-2.0.0-mac-*.dmg`
+   - Linux: `dist/streamgrid-2.0.0-linux-x64.AppImage`
+
+## 📹 RTSP Stream Support
+
+StreamGrid supports RTSP (Real Time Streaming Protocol) streams from IP cameras, security systems, and other RTSP sources.
+
+### Requirements
+- FFmpeg must be installed on your system (see installation instructions above)
+- RTSP stream URL from your camera or source
+
+### RTSP URL Format
+```
+rtsp://[username:password@]host[:port]/path
+```
+
+**Examples:**
+```
+rtsp://192.168.1.100:554/stream1
+rtsp://admin:password@192.168.1.100/live
+rtsps://secure-camera.example.com/stream
+```
+
+### How It Works
+1. StreamGrid detects RTSP URLs automatically
+2. FFmpeg transcodes the RTSP stream to HLS format in real-time
+3. The HLS stream is served locally and played in the browser
+4. Low latency (~2-3 seconds) with automatic retry on connection loss
+
+### Adding an RTSP Stream
+1. Click "Add Stream" button
+2. Enter your RTSP URL in the Stream URL field
+3. The app will show "RTSP stream (requires FFmpeg)" if detected
+4. Add a name and optional logo
+5. Click "Add Stream"
+
+### Troubleshooting RTSP Streams
+
+**"FFmpeg not installed" error:**
+- Install FFmpeg using the instructions above
+- Restart StreamGrid after installation
+- Verify FFmpeg is in your system PATH: `ffmpeg -version`
+
+**Stream fails to load:**
+- Verify the RTSP URL is correct
+- Check if authentication is required (username/password)
+- Ensure your firewall allows RTSP connections
+- Try using TCP transport: `rtsp://camera?tcp`
+
+**High latency or buffering:**
+- RTSP streams have inherent 2-3 second latency due to HLS transcoding
+- Check your network connection to the camera
+- Reduce the number of concurrent RTSP streams
+
+**Stream stops after a while:**
+- StreamGrid automatically retries failed streams (up to 3 times)
+- Check camera timeout settings
+- Verify network stability
+
+### Performance Tips
+- Limit concurrent RTSP streams to 3-4 for best performance
+- Use wired network connection for cameras when possible
+- Close unused RTSP streams to free resources
+- RTSP transcoding uses ~100MB RAM per stream
 
 ## 🛠 Tech Stack
 
@@ -155,7 +261,29 @@ StreamGrid/
 
 ## 📋 Changelog
 
-### Version 1.2.0 (Latest)
+### Version 2.0.0 (Latest)
+**Major Feature Release - Automation & Advanced Controls**
+
+#### 🚀 New Features
+- **REST API** - Full programmatic control with authentication and rate limiting
+- **M3U Playlist Import** - Import playlists with intelligent auto-arrangement
+- **RTSP Stream Support** - Production-ready IP camera streaming with FFmpeg transcoding
+- **Sound Management System** - Global and per-stream audio controls
+- **Auto-Start Streams** - Automatically play all streams on launch
+- **Auto-Restart Failed Streams** - Automatic retry with exponential backoff
+- **Auto-Arrange Grid** - Intelligent grid layout with row-budget algorithm
+
+#### 📚 Documentation
+- Complete REST API documentation ([docs/API.md](docs/API.md))
+- Bruno API test collection ([bruno/README.md](bruno/README.md))
+- Comprehensive RTSP setup guide in README
+
+#### 🐛 Bug Fixes
+- Fixed Linux auto-updater errors
+- Improved CSP handling for Twitch embeds
+- Enhanced error handling across all components
+
+### Version 1.2.0
 **Major Performance Update & Enhanced Features**
 
 #### 🚀 Performance Optimizations

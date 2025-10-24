@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Box,
   AppBar,
@@ -12,19 +12,24 @@ import {
   DialogTitle,
   DialogContent,
   TextField,
-  DialogActions
+  DialogActions,
+  IconButton,
+  Tooltip
 } from '@mui/material'
-import { Add, GitHub } from '@mui/icons-material'
+import { Add, GitHub, VolumeOff, VolumeUp, Settings, GridOn } from '@mui/icons-material'
 import StreamGridLogo from './assets/StreamGrid.svg'
 import { v4 as uuidv4 } from 'uuid'
 import { StreamGrid } from './components/StreamGrid'
 import { AddStreamDialog } from './components/AddStreamDialog'
 import { GridSelector } from './components/GridSelector'
 import { GridManagementDialog } from './components/GridManagementDialog'
+import { SettingsDialog } from './components/SettingsDialog'
+import { AutoArrangeDialog } from './components/AutoArrangeDialog'
 import { useDebouncedStore } from './hooks/useDebouncedStore'
 import { Stream, StreamFormData } from './types/stream'
 import { LoadingScreen } from './components/LoadingScreen'
 import { UpdateAlert } from './components/UpdateAlert'
+import { useStreamStore } from './store/useStreamStore'
 
 export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true)
@@ -33,11 +38,16 @@ export const App: React.FC = () => {
   const [newGridDialogOpen, setNewGridDialogOpen] = useState(false)
   const [newGridName, setNewGridName] = useState('')
   const [gridManagementOpen, setGridManagementOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [autoArrangeDialogOpen, setAutoArrangeDialogOpen] = useState(false)
+  const autoStartTriggeredRef = useRef(false)
+
   const {
     streams,
     layout,
     chats,
     addStream,
+    addMultipleStreams,
     removeStream,
     updateLayout,
     updateStream,
@@ -52,7 +62,37 @@ export const App: React.FC = () => {
     saveDebounceMs: 5000, // 5 seconds instead of 1 second
     streamUpdateDebounceMs: 500
   })
+
+  const { settings, toggleGlobalMute, autoArrangeStreams } = useStreamStore()
   const [editingStream, setEditingStream] = useState<Stream | undefined>(undefined)
+
+  // Define all callbacks before any conditional returns
+  const handleGlobalMuteToggle = useCallback(() => {
+    toggleGlobalMute()
+  }, [toggleGlobalMute])
+
+  const handleAutoArrange = useCallback(async () => {
+    autoArrangeStreams()
+    // Save immediately after auto-arrange
+    await saveNow()
+  }, [autoArrangeStreams, saveNow])
+
+  // Auto-start streams on launch
+  useEffect(() => {
+    if (!autoStartTriggeredRef.current && settings.autoStartOnLaunch && streams.length > 0) {
+      autoStartTriggeredRef.current = true
+
+      const delay = settings.autoStartDelay * 1000
+      console.log(`Auto-starting ${streams.length} streams in ${settings.autoStartDelay} seconds...`)
+
+      setTimeout(() => {
+        // Trigger play on all streams by dispatching custom event
+        const event = new CustomEvent('auto-start-streams')
+        window.dispatchEvent(event)
+        console.log('Auto-start triggered for all streams')
+      }, delay)
+    }
+  }, [settings.autoStartOnLaunch, settings.autoStartDelay, streams.length])
 
   useEffect(() => {
     // Set loading to false immediately as resources are already loaded
@@ -76,26 +116,28 @@ export const App: React.FC = () => {
 
     window.addEventListener('beforeunload', handleBeforeUnload)
 
-    // Add IPC listener for app quit
-    const removeQuitListener = window.api.onAppBeforeQuit(handleAppQuit)
+    // Add IPC listener for app quit (with safety check)
+    let removeQuitListener: (() => void) | undefined
+    if (window.api?.onAppBeforeQuit) {
+      removeQuitListener = window.api.onAppBeforeQuit(handleAppQuit)
+    }
 
-    return () => {
+    return (): void => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      removeQuitListener()
+      if (removeQuitListener) {
+        removeQuitListener()
+      }
     }
   }, [hasUnsavedChanges, saveNow])
 
-  // Auto-save is now handled by the debounced store
-  // No need for manual auto-save implementation here
-
-  if (isLoading) {
-    return <LoadingScreen />
-  }
-
-  const handleAddStream = async (data: StreamFormData): Promise<void> => {
+  // Define all event handlers before conditional return
+  const handleAddStream = useCallback(async (data: StreamFormData): Promise<void> => {
     const newStream: Stream = {
       id: uuidv4(),
-      ...data,
+      name: data.name,
+      logoUrl: data.logoUrl,
+      streamUrl: data.streamUrl,
+      isMuted: data.startMuted,
       isLivestream:
         data.streamUrl.includes('twitch.tv') ||
         data.streamUrl.includes('youtube.com/live') ||
@@ -105,26 +147,51 @@ export const App: React.FC = () => {
     addStream(newStream)
     // Save immediately after adding a stream
     await saveNow()
-  }
+  }, [addStream, saveNow])
 
-  const handleRemoveStream = async (id: string): Promise<void> => {
+  const handleRemoveStream = useCallback(async (id: string): Promise<void> => {
     removeChatsForStream(id)
     removeStream(id)
     // Save immediately after removing a stream
     await saveNow()
-  }
+  }, [removeChatsForStream, removeStream, saveNow])
 
-  const handleEditStream = (stream: Stream): void => {
+  const handleEditStream = useCallback((stream: Stream): void => {
     setEditingStream(stream)
     setIsAddDialogOpen(true)
-  }
+  }, [])
 
-  const handleUpdateStream = async (id: string, data: StreamFormData): Promise<void> => {
-    updateStream(id, data)
+  const handleUpdateStream = useCallback(async (id: string, data: StreamFormData): Promise<void> => {
+    const updates: Partial<Stream> = {
+      name: data.name,
+      logoUrl: data.logoUrl,
+      streamUrl: data.streamUrl
+    }
+
+    // Only update isMuted if startMuted is defined
+    if (data.startMuted !== undefined) {
+      updates.isMuted = data.startMuted
+    }
+
+    updateStream(id, updates)
     // Save immediately after updating a stream
     await saveNow()
-  }
+  }, [updateStream, saveNow])
 
+  const handleAddMultipleStreams = useCallback(async (importedStreams: Stream[]): Promise<void> => {
+    // Add all imported streams
+    addMultipleStreams(importedStreams)
+
+    // Save immediately after import
+    await saveNow()
+  }, [addMultipleStreams, saveNow])
+
+  // Auto-save is now handled by the debounced store
+  // No need for manual auto-save implementation here
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
 
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -168,7 +235,59 @@ export const App: React.FC = () => {
             onManageGrids={() => setGridManagementOpen(true)}
           />
 
-          <Box sx={{ mx: 2 }} />
+          <Box sx={{ mx: 1 }} />
+
+          {/* Global Mute Button */}
+          <Tooltip title={settings.globalMuted ? 'Unmute All Streams' : 'Mute All Streams'}>
+            <IconButton
+              onClick={handleGlobalMuteToggle}
+              sx={{
+                color: settings.globalMuted ? 'error.main' : 'text.primary',
+                backgroundColor: settings.globalMuted ? 'rgba(211, 47, 47, 0.1)' : 'transparent',
+                '&:hover': {
+                  backgroundColor: settings.globalMuted ? 'rgba(211, 47, 47, 0.2)' : 'action.hover'
+                }
+              }}
+            >
+              {settings.globalMuted ? <VolumeOff /> : <VolumeUp />}
+            </IconButton>
+          </Tooltip>
+
+          {/* Auto-Arrange Button */}
+          <Tooltip title="Auto-Arrange Streams">
+            <IconButton
+              onClick={() => setAutoArrangeDialogOpen(true)}
+              disabled={streams.length === 0 && chats.length === 0}
+              sx={{
+                color: 'text.primary',
+                '&:hover': {
+                  backgroundColor: 'action.hover'
+                },
+                '&.Mui-disabled': {
+                  color: 'action.disabled'
+                }
+              }}
+            >
+              <GridOn />
+            </IconButton>
+          </Tooltip>
+
+          {/* Settings Button */}
+          <Tooltip title="Settings">
+            <IconButton
+              onClick={() => setSettingsOpen(true)}
+              sx={{
+                color: 'text.primary',
+                '&:hover': {
+                  backgroundColor: 'action.hover'
+                }
+              }}
+            >
+              <Settings />
+            </IconButton>
+          </Tooltip>
+
+          <Box sx={{ mx: 1 }} />
 
           <Button
             variant="contained"
@@ -202,7 +321,7 @@ export const App: React.FC = () => {
                   About StreamGrid
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 1 }}>
-                  Created by Bernard Moerdler - v{window.api.version}
+                  Created by Bernard Moerdler - v{window.api?.version || '2.0.0'}
                 </Typography>
 
                 <Link
@@ -251,6 +370,7 @@ export const App: React.FC = () => {
           setEditingStream(undefined)
         }}
         onAdd={handleAddStream}
+        onAddMultiple={handleAddMultipleStreams}
         onEdit={handleUpdateStream}
         editStream={editingStream}
       />
@@ -309,6 +429,18 @@ export const App: React.FC = () => {
       <GridManagementDialog
         open={gridManagementOpen}
         onClose={() => setGridManagementOpen(false)}
+      />
+
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+
+      <AutoArrangeDialog
+        open={autoArrangeDialogOpen}
+        onClose={() => setAutoArrangeDialogOpen(false)}
+        onConfirm={handleAutoArrange}
+        streamCount={streams.length + chats.length}
       />
     </Box>
   )

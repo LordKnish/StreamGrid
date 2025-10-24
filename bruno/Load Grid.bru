@@ -1,0 +1,24 @@
+meta {
+  name: Load Grid
+  type: http
+  seq: 9
+}
+
+put {
+  url: http://0.0.0.0:3737/api/grids/:gridId/load
+  body: none
+  auth: inherit
+}
+
+params:path {
+  gridId: grid-1234567890
+}
+
+headers {
+  Authorization: Bearer {{apiKey}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

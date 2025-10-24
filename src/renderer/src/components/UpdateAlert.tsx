@@ -5,7 +5,7 @@ import { compareVersions } from 'compare-versions'
 export const UpdateAlert: React.FC = () => {
   const [showAlert, setShowAlert] = useState(false)
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
-  const currentVersion = window.api.version
+  const currentVersion = window.api?.version || '2.0.0'
 
   // Set to true to always show the update alert for testing
   const TESTING_MODE = false
@@ -13,6 +13,9 @@ export const UpdateAlert: React.FC = () => {
   useEffect(() => {
     const checkVersion = async (): Promise<void> => {
       try {
+        if (!window.api?.getGitHubVersion) {
+          return
+        }
         const githubVersion = await window.api.getGitHubVersion()
         if (TESTING_MODE || (githubVersion && compareVersions(githubVersion, currentVersion) > 0)) {
           setLatestVersion(githubVersion)

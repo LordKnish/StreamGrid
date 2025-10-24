@@ -2,6 +2,15 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { ThemeProvider, CssBaseline, createTheme } from '@mui/material'
 import { App } from './App'
+import { useStreamStore } from './store/useStreamStore'
+
+// Expose store to window for API server access
+declare global {
+  interface Window {
+    streamStore: typeof useStreamStore
+  }
+}
+window.streamStore = useStreamStore
 
 const theme = createTheme({
   palette: {

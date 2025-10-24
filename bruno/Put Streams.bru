@@ -1,0 +1,32 @@
+meta {
+  name: Put Streams
+  type: http
+  seq: 5
+}
+
+put {
+  url: 0.0.0.0:3737/api/streams/:streamId
+  body: json
+  auth: inherit
+}
+
+params:path {
+  streamId: stream-1234567890
+}
+
+headers {
+  Authorization: Bearer {{apiKey}}
+}
+
+body:json {
+  {
+    "name": "Updated Name",
+    "isMuted": true,
+    "fitMode": "cover"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

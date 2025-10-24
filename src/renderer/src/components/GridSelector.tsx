@@ -81,6 +81,9 @@ export const GridSelector: React.FC<GridSelectorProps> = ({ onNewGrid, onManageG
 
   const loadRecentGridsInfo = async (): Promise<void> => {
     try {
+      if (!window.api?.getAllGrids) {
+        return
+      }
       const allGrids = await window.api.getAllGrids()
       const recent = recentGridIds
         .map(id => allGrids.find(g => g.id === id))
@@ -160,6 +163,9 @@ export const GridSelector: React.FC<GridSelectorProps> = ({ onNewGrid, onManageG
     handleCloseContextMenu()
 
     try {
+      if (!window.api?.loadGrid) {
+        return
+      }
       const grid = await window.api.loadGrid(selectedGrid.id)
       if (grid) {
         const exportData = {

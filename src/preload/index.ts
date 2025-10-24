@@ -8,6 +8,10 @@ const api = {
   getGitHubVersion: (): Promise<string | null> => ipcRenderer.invoke('get-github-version'),
   openExternal: (url: string): Promise<void> => shell.openExternal(url),
   showOpenDialog: (): Promise<{ filePath: string; fileUrl: string } | null> => ipcRenderer.invoke('show-open-dialog'),
+  // M3U import APIs
+  showM3UDialog: (): Promise<string | null> => ipcRenderer.invoke('show-m3u-dialog'),
+  readM3UFile: (filePath: string): Promise<{ success: boolean; content?: string; error?: string }> => ipcRenderer.invoke('read-m3u-file', filePath),
+  fetchM3UUrl: (url: string): Promise<{ success: boolean; content?: string; error?: string }> => ipcRenderer.invoke('fetch-m3u-url', url),
   // Grid management APIs
   saveGrid: (grid: SavedGrid): Promise<void> => ipcRenderer.invoke('save-grid', grid),
   loadGrid: (gridId: string): Promise<SavedGrid | null> => ipcRenderer.invoke('load-grid', gridId),
@@ -15,6 +19,24 @@ const api = {
   renameGrid: (gridId: string, newName: string): Promise<void> => ipcRenderer.invoke('rename-grid', gridId, newName),
   getGridManifest: (): Promise<GridManifest> => ipcRenderer.invoke('get-grid-manifest'),
   getAllGrids: (): Promise<Array<{ id: string; name: string; lastModified: string; streamCount: number }>> => ipcRenderer.invoke('get-all-grids'),
+  // RTSP streaming APIs
+  rtspStartStream: (streamId: string, rtspUrl: string): Promise<{ success: boolean; url?: string; port?: number; error?: string }> =>
+    ipcRenderer.invoke('rtspStartStream', streamId, rtspUrl),
+  rtspStopStream: (streamId: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('rtspStopStream', streamId),
+  rtspCheckFfmpeg: (): Promise<{ available: boolean; version?: string; path?: string }> =>
+    ipcRenderer.invoke('rtspCheckFfmpeg'),
+  // API server management
+  startApiServer: (config: { port: number; apiKey: string; enabled: boolean }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('start-api-server', config),
+  stopApiServer: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('stop-api-server'),
+  restartApiServer: (config: { port: number; apiKey: string; enabled: boolean }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('restart-api-server', config),
+  getApiServerStatus: (): Promise<{ running: boolean; config: { port: number; apiKey: string; enabled: boolean } | null }> =>
+    ipcRenderer.invoke('get-api-server-status'),
+  generateApiKey: (): Promise<string> =>
+    ipcRenderer.invoke('generate-api-key'),
   // App lifecycle events
   onAppBeforeQuit: (callback: () => void): (() => void) => {
     const listener = (): void => callback()

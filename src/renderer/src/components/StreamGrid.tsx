@@ -64,16 +64,18 @@ export const StreamGrid = React.memo(({
       const containerWidth = containerRef.current.offsetWidth
       const newWidth = Math.max(Math.floor(containerWidth), 480)
 
-      const containerHeight = window.innerHeight
+      // Match the algorithm's calculation exactly
+      const APPBAR_HEIGHT = 64
+      const containerHeight = window.innerHeight - APPBAR_HEIGHT
       const margins = calculateMargins()
       const horizontalMargins = margins.edgeHorizontal
       const verticalMargins = margins.edgeVertical
       const availableWidth = newWidth - horizontalMargins
       const availableHeight = containerHeight - verticalMargins
 
-      const columnWidth = availableWidth / 12
+      const columnWidth = availableWidth / 24
       const maxRowsByWidth = Math.floor(columnWidth / ASPECT_RATIO)
-      const maxRowsByHeight = Math.floor(availableHeight / 12)
+      const maxRowsByHeight = Math.floor(availableHeight / 24)
       const newRowHeight = Math.min(maxRowsByWidth, maxRowsByHeight)
       setDimensions({ width: newWidth, rowHeight: newRowHeight })
     }
@@ -144,7 +146,7 @@ export const StreamGrid = React.memo(({
         width: '100%',
         height: '100vh',
         backgroundColor: 'background.default',
-        overflow: 'hidden',
+        overflow: 'auto',
         userSelect: 'none',
         position: 'relative',
         '& .react-grid-layout': {
@@ -181,10 +183,10 @@ export const StreamGrid = React.memo(({
       <GridLayout
         className="layout"
         layout={layout}
-        cols={12}
+        cols={24}
         width={dimensions.width}
         rowHeight={dimensions.rowHeight}
-        margin={[calculateMargins().horizontal, calculateMargins().vertical]} // Use smaller margins between cards
+        margin={[calculateMargins().horizontal, calculateMargins().vertical]}
         useCSSTransforms={true}
         onLayoutChange={(layout): void => handleLayoutChange(layout as GridItem[])}
         isDraggable
@@ -193,7 +195,7 @@ export const StreamGrid = React.memo(({
         compactType={null}
         preventCollision={true}
         allowOverlap={true}
-        maxRows={12}
+        maxRows={200}
       >
         {memoizedContent}
       </GridLayout>

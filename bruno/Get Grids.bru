@@ -1,0 +1,20 @@
+meta {
+  name: Get Grids
+  type: http
+  seq: 7
+}
+
+get {
+  url: http://0.0.0.0:3737/api/grids
+  body: none
+  auth: inherit
+}
+
+headers {
+  Authorization: Bearer {{apiKey}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -1,13 +1,13 @@
-import { resolve } from 'path'
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
-import react from '@vitejs/plugin-react'
-
-export default defineConfig({
+// electron.vite.config.ts
+import { resolve } from "path";
+import { defineConfig, externalizeDepsPlugin } from "electron-vite";
+import react from "@vitejs/plugin-react";
+var electron_vite_config_default = defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        external: ['electron-updater']
+        external: ["electron-updater"]
       }
     }
   },
@@ -17,7 +17,7 @@ export default defineConfig({
   renderer: {
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer/src')
+        "@renderer": resolve("src/renderer/src")
       }
     },
     plugins: [react()],
@@ -31,22 +31,22 @@ export default defineConfig({
         output: {
           // Simplified manual chunks - only vendor packages
           manualChunks: {
-            'react-vendor': ['react', 'react-dom'],
-            'mui-vendor': ['@mui/material', '@mui/icons-material'],
-            'player-vendor': ['react-player'],
-            'utils': ['lodash', 'uuid', 'jdenticon', 'web-vitals', 'react-window']
+            "react-vendor": ["react", "react-dom"],
+            "mui-vendor": ["@mui/material", "@mui/icons-material"],
+            "player-vendor": ["react-player"],
+            "utils": ["lodash", "uuid", "jdenticon", "web-vitals", "react-window"]
           },
           // Use dynamic imports for better splitting
           chunkFileNames: (chunkInfo) => {
-            const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop() : 'chunk'
-            return `js/${facadeModuleId}-[hash].js`
+            const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split("/").pop() : "chunk";
+            return `js/${facadeModuleId}-[hash].js`;
           }
         }
       },
       // Optimize chunk size
-      chunkSizeWarningLimit: 1000,
+      chunkSizeWarningLimit: 1e3,
       // Enable minification but keep console/debugger for debugging
-      minify: 'terser',
+      minify: "terser",
       terserOptions: {
         compress: {
           drop_console: false,
@@ -67,15 +67,18 @@ export default defineConfig({
     optimizeDeps: {
       // Pre-bundle heavy dependencies
       include: [
-        'react',
-        'react-dom',
-        '@mui/material',
-        'react-player',
-        'lodash',
-        'react-window'
+        "react",
+        "react-dom",
+        "@mui/material",
+        "react-player",
+        "lodash",
+        "react-window"
       ],
       // Exclude dependencies that should be external
-      exclude: ['electron']
+      exclude: ["electron"]
     }
   }
-})
+});
+export {
+  electron_vite_config_default as default
+};

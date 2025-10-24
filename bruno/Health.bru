@@ -1,0 +1,16 @@
+meta {
+  name: Health
+  type: http
+  seq: 1
+}
+
+get {
+  url: 0.0.0.0:3737/health
+  body: none
+  auth: none
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -1,8 +1,79 @@
 import { create } from 'zustand'
 import { persist, devtools } from 'zustand/middleware'
-import { Stream, GridItem } from '../types/stream'
+import { Stream, GridItem, AppSettings } from '../types/stream'
 import { validateImportData } from './streamSelectors'
 import { SavedGrid } from '../types/grid'
+
+// Pure integer grid layout helper - no viewport math, no fractional units
+const GRID_COLS = 24
+const TARGET_ASPECT = 16 / 9
+
+type LayoutOpts = {
+  allowedWidths?: number[]
+  preferLargerTiles?: boolean
+  maxRows?: number // budget in integer grid rows. default 24.
+}
+
+function chooseLayouts(
+  ids: string[],
+  opts?: LayoutOpts
+): GridItem[] {
+  const allowed = opts?.allowedWidths ?? [12, 8, 6, 4, 3, 2] // divisors of 24
+  const maxRows = opts?.maxRows ?? 24
+  const n = ids.length
+
+  type Cand = { w: number; h: number; cols: number; rows: number; waste: number; totalH: number; score: number }
+  const feasible: Cand[] = []
+  const all: Cand[] = []
+
+  for (const w of allowed) {
+    const cols = Math.floor(GRID_COLS / w)
+    if (cols < 1) continue
+    const rows = Math.ceil(n / cols)
+    const h = Math.max(2, Math.round(w / TARGET_ASPECT)) // integer
+    const totalH = rows * h
+    const totalCells = cols * rows
+    const waste = totalCells - n
+
+    // scoring once it fits the height budget
+    const sizeScore = w * h
+    const wasteScore = 1 / (waste + 1)
+    const balanceScore = 1 / (Math.abs(cols - rows) + 1)
+    // penalize tall stacks even if under budget so 12×7 loses to 8×5 when both fit
+    const heightPenalty = 1 / (totalH + 1)
+
+    const score = sizeScore * 0.5 + wasteScore * 0.25 + balanceScore * 0.15 + heightPenalty * 0.10
+
+    const c = { w, h, cols, rows, waste, totalH, score }
+    all.push(c)
+    if (totalH <= maxRows) feasible.push(c)
+  }
+
+  const pick = (list: Cand[]): Cand =>
+    list.reduce((a, b) => (b.score > a.score ? b : a))
+
+  // prefer any that fit the row budget; otherwise pick the smallest width to force-fit
+  const best = feasible.length > 0
+    ? pick(feasible)
+    : pick(all.sort((a, b) => a.w - b.w))
+
+  const res: GridItem[] = []
+  let k = 0
+  for (let r = 0; r < best.rows && k < n; r++) {
+    const count = Math.min(best.cols, n - k)
+    const offset = Math.floor((GRID_COLS - count * best.w) / 2)
+    for (let c = 0; c < count && k < n; c++, k++) {
+      res.push({
+        i: ids[k],
+        x: offset + c * best.w,
+        y: r * best.h,
+        w: best.w,
+        h: best.h
+      })
+    }
+  }
+  return res
+}
 
 export interface ChatItem {
   id: string
@@ -17,6 +88,7 @@ interface StreamStore {
   layout: GridItem[]
   chats: ChatItem[]
   lastDraggedId: string | null
+  settings: AppSettings
   // Grid management
   currentGridId: string | null
   currentGridName: string
@@ -26,6 +98,7 @@ interface StreamStore {
   // Core stream methods
   setLastDraggedId: (id: string | null) => void
   addStream: (stream: Stream) => void
+  addMultipleStreams: (streams: Stream[]) => void
   removeStream: (id: string) => void
   updateStream: (id: string, updates: Partial<Stream>) => void
   updateLayout: (newLayout: GridItem[]) => void
@@ -39,6 +112,12 @@ interface StreamStore {
   addChat: (streamIdentifier: string, streamId: string, streamName: string) => string
   removeChat: (id: string) => void
   removeChatsForStream: (streamId: string) => void
+  // Settings methods
+  updateSettings: (updates: Partial<AppSettings>) => void
+  toggleGlobalMute: () => void
+  muteAllStreams: () => void
+  unmuteAllStreams: () => void
+  autoArrangeStreams: () => void
   // Grid management methods
   saveCurrentGrid: (name?: string) => Promise<SavedGrid>
   loadGrid: (gridId: string) => Promise<void>
@@ -56,6 +135,7 @@ const createInitialState = (): {
   layout: GridItem[]
   chats: ChatItem[]
   lastDraggedId: string | null
+  settings: AppSettings
   currentGridId: string | null
   currentGridName: string
   hasUnsavedChanges: boolean
@@ -66,6 +146,15 @@ const createInitialState = (): {
   layout: [],
   chats: [],
   lastDraggedId: null,
+  settings: {
+    defaultMuteNewStreams: false,
+    globalMuted: false,
+    autoStartOnLaunch: false,
+    autoStartDelay: 0,
+    apiEnabled: false,
+    apiPort: 3737,
+    apiKey: ''
+  },
   currentGridId: null,
   currentGridName: 'Untitled Grid',
   hasUnsavedChanges: false,
@@ -93,21 +182,39 @@ export const useStreamStore = create<StreamStore>()(
         addStream: (stream): void =>
           set(
             (state) => {
-              const newLayout: GridItem = {
-                i: stream.id,
-                x: (state.streams.length * 3) % 9,
-                y: Math.floor(state.streams.length / 3) * 3,
-                w: 3,
-                h: 3
+              const streamWithMute = {
+                ...stream,
+                isMuted: stream.isMuted !== undefined ? stream.isMuted : state.settings.defaultMuteNewStreams
               }
+              const streams = [...state.streams, streamWithMute]
+              const ids = [...streams.map(s => s.id), ...state.chats.map(c => c.id)]
+              const layout = chooseLayouts(ids, { maxRows: 24 })
+              return { streams, layout, hasUnsavedChanges: true }
+            },
+            false,
+            'ADD_STREAM'
+          ),
+
+        addMultipleStreams: (streams): void =>
+          set(
+            (state) => {
+              const streamsWithMute = streams.map(stream => ({
+                ...stream,
+                isMuted: stream.isMuted !== undefined ? stream.isMuted : state.settings.defaultMuteNewStreams
+              }))
+
+              const allStreams = [...state.streams, ...streamsWithMute]
+              const allIds = allStreams.map(s => s.id)
+              const allLayouts = chooseLayouts(allIds, { maxRows: 24 })
+
               return {
-                streams: [...state.streams, stream],
-                layout: [...state.layout, newLayout],
+                streams: allStreams,
+                layout: allLayouts,
                 hasUnsavedChanges: true
               }
             },
             false,
-            'ADD_STREAM'
+            'ADD_MULTIPLE_STREAMS'
           ),
 
         removeStream: (id): void =>
@@ -181,18 +288,10 @@ export const useStreamStore = create<StreamStore>()(
 
           set(
             (state) => {
-              const newLayout: GridItem = {
-                i: id,
-                x: (state.layout.length * 3) % 9,
-                y: Math.floor(state.layout.length / 3) * 3,
-                w: 2,
-                h: 3
-              }
-              return {
-                chats: [...state.chats, { id, streamId, streamType, streamName, streamIdentifier }],
-                layout: [...state.layout, newLayout],
-                hasUnsavedChanges: true
-              }
+              const chats = [...state.chats, { id, streamId, streamType, streamName, streamIdentifier }]
+              const ids = [...state.streams.map(s => s.id), ...chats.map(c => c.id)]
+              const layout = chooseLayouts(ids, { maxRows: 24 })
+              return { chats, layout, hasUnsavedChanges: true }
             },
             false,
             'ADD_CHAT'
@@ -233,6 +332,69 @@ export const useStreamStore = create<StreamStore>()(
           const { streams, layout, chats } = get()
           return { streams, layout, chats }
         },
+
+        // Settings methods
+        updateSettings: (updates): void =>
+          set(
+            (state) => ({
+              settings: { ...state.settings, ...updates }
+            }),
+            false,
+            'UPDATE_SETTINGS'
+          ),
+
+        toggleGlobalMute: (): void =>
+          set(
+            (state) => {
+              const newGlobalMuted = !state.settings.globalMuted
+              return {
+                settings: { ...state.settings, globalMuted: newGlobalMuted },
+                // Update all streams to match global mute state
+                streams: state.streams.map(stream => ({
+                  ...stream,
+                  isMuted: newGlobalMuted
+                }))
+              }
+            },
+            false,
+            'TOGGLE_GLOBAL_MUTE'
+          ),
+
+        muteAllStreams: (): void =>
+          set(
+            (state) => ({
+              streams: state.streams.map(stream => ({ ...stream, isMuted: true })),
+              settings: { ...state.settings, globalMuted: true }
+            }),
+            false,
+            'MUTE_ALL_STREAMS'
+          ),
+
+        unmuteAllStreams: (): void =>
+          set(
+            (state) => ({
+              streams: state.streams.map(stream => ({ ...stream, isMuted: false })),
+              settings: { ...state.settings, globalMuted: false }
+            }),
+            false,
+            'UNMUTE_ALL_STREAMS'
+          ),
+
+        autoArrangeStreams: (): void =>
+          set(
+            (state) => {
+              const allItems = [...state.streams, ...state.chats]
+              if (allItems.length === 0) return state
+
+              // Stable order: streams first by insertion, then chats by insertion
+              const ids = allItems.map(it => it.id)
+              const newLayout = chooseLayouts(ids, { maxRows: 24 })
+
+              return { layout: newLayout, hasUnsavedChanges: true }
+            },
+            false,
+            'AUTO_ARRANGE_STREAMS'
+          ),
 
         // Grid management methods
         saveCurrentGrid: async (name?: string): Promise<SavedGrid> => {
@@ -360,12 +522,13 @@ export const useStreamStore = create<StreamStore>()(
       }),
       {
         name: 'stream-grid-storage',
-        version: 1,
+        version: 2, // Increment version for settings addition
         partialize: (state) => ({
           // Only persist these fields
           streams: state.streams,
           layout: state.layout,
           chats: state.chats,
+          settings: state.settings,
           currentGridId: state.currentGridId,
           currentGridName: state.currentGridName,
           recentGridIds: state.recentGridIds,

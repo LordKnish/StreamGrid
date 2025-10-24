@@ -1,0 +1,29 @@
+meta {
+  name: Post Grid
+  type: http
+  seq: 8
+}
+
+post {
+  url: http://0.0.0.0:3737/api/grids
+  body: json
+  auth: inherit
+}
+
+headers {
+  Authorization: Bearer {{apiKey}}
+}
+
+body:json {
+  {
+    "name": "My New Grid",
+    "streams": [],
+    "layout": [],
+    "chats": []
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

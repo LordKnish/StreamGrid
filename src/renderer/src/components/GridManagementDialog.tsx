@@ -61,6 +61,9 @@ export const GridManagementDialog: React.FC<GridManagementDialogProps> = ({ open
 
   const loadGrids = async (): Promise<void> => {
     try {
+      if (!window.api?.getAllGrids) {
+        return
+      }
       const allGrids = await window.api.getAllGrids()
       // Map the API response to include createdAt field
       const gridsWithCreatedAt = allGrids.map(grid => ({
@@ -114,6 +117,9 @@ export const GridManagementDialog: React.FC<GridManagementDialogProps> = ({ open
 
   const handleExportGrid = async (grid: GridInfo): Promise<void> => {
     try {
+      if (!window.api?.loadGrid) {
+        return
+      }
       const gridData = await window.api.loadGrid(grid.id)
       if (!gridData) return
 
@@ -133,6 +139,9 @@ export const GridManagementDialog: React.FC<GridManagementDialogProps> = ({ open
 
   const handleDuplicateGrid = async (grid: GridInfo): Promise<void> => {
     try {
+      if (!window.api?.loadGrid) {
+        return
+      }
       const gridData = await window.api.loadGrid(grid.id)
       if (!gridData) return
 
