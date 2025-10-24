@@ -308,11 +308,18 @@ async function createWindow(): Promise<void> {
 app.whenReady().then(async () => {
   // Lazy load electron-updater only in packaged builds
   if (app.isPackaged) {
-    const mod = await import('electron-updater')
-    autoUpdater = mod.autoUpdater
-    wireAutoUpdaterEvents(autoUpdater)
-    checkForUpdates()
-    setInterval(checkForUpdates, 60 * 60 * 1000)
+    try {
+      const mod = await import('electron-updater')
+      autoUpdater = mod.autoUpdater
+      if (autoUpdater) {
+        wireAutoUpdaterEvents(autoUpdater)
+        checkForUpdates()
+        setInterval(checkForUpdates, 60 * 60 * 1000)
+      }
+    } catch (error) {
+      console.error('Failed to load electron-updater:', error)
+      // Continue without auto-updater
+    }
   }
 
   // Set app user model id for windows
