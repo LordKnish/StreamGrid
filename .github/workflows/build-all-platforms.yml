@@ -30,15 +30,20 @@ jobs:
       - name: Build app
         run: npm run build
       - name: Package + generate update metadata
+        shell: bash
         env:
-          # Signing/notarization run only when these secrets are configured;
-          # otherwise electron-builder produces an unsigned build.
+          # Signing/notarization run only when these secrets are configured.
+          # Empty secrets are unset below so unsigned builds still succeed
+          # (electron-builder treats an empty CSC_LINK as a bad file path).
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx electron-builder --mac dmg zip --x64 --arm64 --publish never
+        run: |
+          [ -n "$CSC_LINK" ] || unset CSC_LINK CSC_KEY_PASSWORD
+          [ -n "$APPLE_ID" ] || unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+          npx electron-builder --mac dmg zip --x64 --arm64 --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: macos
@@ -63,11 +68,15 @@ jobs:
       - name: Build app
         run: npm run build
       - name: Package + generate update metadata
+        shell: bash
         env:
           # Code signing runs only when these secrets are configured.
+          # Empty secrets are unset below so unsigned builds still succeed.
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: npx electron-builder --win nsis --x64 --publish never
+        run: |
+          [ -n "$CSC_LINK" ] || unset CSC_LINK CSC_KEY_PASSWORD
+          npx electron-builder --win nsis --x64 --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: windows-x64
