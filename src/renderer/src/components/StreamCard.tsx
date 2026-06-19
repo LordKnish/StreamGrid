@@ -16,6 +16,7 @@ import { PlayArrow, Stop, Close, Edit, Chat, AspectRatio, CropFree, VolumeOff, V
 import { Stream } from '../types/stream'
 import { StreamErrorBoundary } from './StreamErrorBoundary'
 import { useStreamStore } from '../store/useStreamStore'
+import { tokens } from '../theme'
 
 // Lazy load ReactPlayer for better initial load time
 const ReactPlayer = lazy(() => import('react-player'))
@@ -65,7 +66,14 @@ const detectStreamType = (url: string): 'hls' | 'dash' | 'youtube' | 'twitch' | 
   }
 
   const hlsPatterns = [/\.m3u8(\?.*)?$/i]
-  const dashPatterns = [/\.mpd(\?.*)?$/i, /manifest\.mpd/i]
+  const dashPatterns = [
+    /\.mpd(\?.*)?$/i,
+    /manifest\.mpd/i,
+    // Redge / Edgeware live DASH manifests use a .livx extension and a
+    // /livedash/ path rather than .mpd (e.g. cdn-redge.media livedash links)
+    /\.livx(\?.*)?$/i,
+    /\/livedash\//i
+  ]
   const youtubePatterns = [
     // Standard YouTube watch URLs
     /^(https?:\/\/)?(www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]+/i,
@@ -379,177 +387,46 @@ const StreamCard = memo(
     updateStream(stream.id, { isMuted: newMuteState })
   }, [currentMuteState, stream.id, updateStream])
 
+  // Glass feed-control button (28×28) — Aurora hover affordance.
+  const ctlBtnSx = {
+    width: 28,
+    height: 28,
+    p: 0,
+    borderRadius: '8px',
+    color: tokens.text,
+    backgroundColor: 'rgba(11,10,18,0.55)',
+    backdropFilter: 'blur(8px)',
+    border: `1px solid ${tokens.borderStrong}`,
+    transition: `background-color ${tokens.motion}, color ${tokens.motion}`,
+    '&:hover': { backgroundColor: 'rgba(11,10,18,0.85)' }
+  } as const
+
   return (
     <Card
       sx={{
         width: '100%',
         height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
         position: 'relative',
-        bgcolor: 'background.paper',
-        borderRadius: 2,
+        bgcolor: tokens.feed,
+        backdropFilter: 'none',
+        border: `1px solid ${tokens.border}`,
+        borderRadius: '14px',
+        boxShadow: 'none',
         overflow: 'hidden',
-        userSelect: 'none'
+        userSelect: 'none',
+        transition: `border-color ${tokens.motion}`,
+        '&:hover': { borderColor: 'rgba(255,255,255,0.22)' },
+        '&:hover .feed-ctl': { opacity: 1 }
       }}
     >
-      <Box
-        sx={{
-          position: 'relative',
-          height: '40px',
-          flexShrink: 0,
-          bgcolor: 'rgba(0,0,0,0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          px: 1
-        }}
-      >
-        <Typography
-          variant="subtitle2"
-          noWrap
-          className="drag-handle"
-          sx={{
-            color: 'white',
-            minWidth: 0,
-            mr: 1,
-            cursor: 'move',
-            flex: 1,
-            '&:hover': {
-              bgcolor: 'rgba(255,255,255,0.1)'
-            }
-          }}
-        >
-          {stream.name}
-        </Typography>
-
-        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-          {isPlaying && (
-            <>
-              <Tooltip title={currentMuteState ? 'Unmute' : 'Mute'}>
-                <IconButton
-                  onClick={handleToggleMute}
-                  sx={{
-                    backgroundColor: currentMuteState ? 'rgba(211, 47, 47, 0.4)' : 'rgba(0,0,0,0.4)',
-                    color: 'white',
-                    '&:hover': {
-                      backgroundColor: currentMuteState ? 'rgba(211, 47, 47, 0.6)' : 'rgba(0,0,0,0.6)',
-                      color: currentMuteState ? 'error.main' : 'primary.main'
-                    },
-                    padding: '4px'
-                  }}
-                  size="small"
-                >
-                  {currentMuteState ? <VolumeOff fontSize="small" /> : <VolumeUp fontSize="small" />}
-                </IconButton>
-              </Tooltip>
-              <Tooltip title={currentFitMode === 'contain' ? 'Switch to Fill Mode' : 'Switch to Fit Mode'}>
-                <IconButton
-                  onClick={handleToggleFitMode}
-                  sx={{
-                    backgroundColor: currentFitMode === 'cover' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)',
-                    color: 'white',
-                    '&:hover': {
-                      backgroundColor: currentFitMode === 'cover' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.6)',
-                      color: 'primary.main'
-                    },
-                    padding: '4px'
-                  }}
-                  size="small"
-                >
-                  {currentFitMode === 'contain' ? <CropFree fontSize="small" /> : <AspectRatio fontSize="small" />}
-                </IconButton>
-              </Tooltip>
-              <IconButton
-                onClick={handleStop}
-                sx={{
-                  backgroundColor: 'rgba(0,0,0,0.4)',
-                  color: 'white',
-                  '&:hover': {
-                    backgroundColor: 'rgba(0,0,0,0.6)',
-                    color: 'error.main'
-                  },
-                  padding: '4px'
-                }}
-                size="small"
-              >
-                <Stop fontSize="small" />
-              </IconButton>
-              {(videoId || channelName) && onAddChat && (
-                <IconButton
-                  onClick={() => {
-                    if (streamType === 'youtube' && videoId) {
-                      onAddChat(videoId, stream.id, stream.name)
-                    } else if (streamType === 'twitch' && channelName) {
-                      onAddChat(channelName, stream.id, stream.name)
-                    }
-                  }}
-                  sx={{
-                    backgroundColor: 'rgba(0,0,0,0.4)',
-                    color: 'white',
-                    '&:hover': {
-                      backgroundColor: 'rgba(0,0,0,0.6)',
-                      color: 'primary.main'
-                    },
-                    padding: '4px',
-                    ml: 0.5
-                  }}
-                  size="small"
-                >
-                  <Chat fontSize="small" />
-                </IconButton>
-              )}
-            </>
-          )}
-          <IconButton
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit(stream)
-            }}
-            sx={{
-              backgroundColor: 'rgba(0,0,0,0.4)',
-              color: 'white',
-              '&:hover': {
-                backgroundColor: 'rgba(0,0,0,0.6)',
-                color: 'primary.main'
-              },
-              padding: '4px'
-            }}
-            size="small"
-          >
-            <Edit fontSize="small" />
-          </IconButton>
-          <IconButton
-            onClick={(e) => {
-              e.stopPropagation()
-              onRemove(stream.id)
-            }}
-            sx={{
-              backgroundColor: 'rgba(0,0,0,0.4)',
-              color: 'white',
-              '&:hover': {
-                backgroundColor: 'rgba(0,0,0,0.6)',
-                color: 'error.main'
-              },
-              padding: '4px'
-            }}
-            size="small"
-          >
-            <Close fontSize="small" />
-          </IconButton>
-        </Box>
-      </Box>
-
+      {/* ── Media layer (fills the whole tile) ── */}
       {!isPlaying ? (
         <Box
           sx={{
-            flex: 1,
-            minHeight: 0,
+            position: 'absolute',
+            inset: 0,
             cursor: 'pointer',
-            '&:hover': {
-              '& .play-overlay': {
-                opacity: 1
-              }
-            }
+            '&:hover .play-overlay': { opacity: 1 }
           }}
           onClick={handlePlay}
         >
@@ -592,30 +469,38 @@ const StreamCard = memo(
             className="play-overlay"
             sx={{
               position: 'absolute',
-              top: 40,
-              left: 0,
-              right: 0,
-              bottom: 0,
+              inset: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: 'rgba(0,0,0,0.3)',
+              backgroundColor: 'rgba(8,7,13,0.35)',
               opacity: 0,
-              transition: 'opacity 0.2s'
+              transition: `opacity ${tokens.motion}`
             }}
           >
-            <PlayArrow sx={{ fontSize: 48, color: 'white' }} />
+            <Box
+              sx={{
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                backgroundImage: tokens.gradient,
+                boxShadow: '0 8px 24px -8px rgba(225,92,255,0.55)'
+              }}
+            >
+              <PlayArrow sx={{ fontSize: 30 }} />
+            </Box>
           </Box>
         </Box>
       ) : (
-        <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+        <Box sx={{ position: 'absolute', inset: 0 }}>
           <Box
             sx={{
               position: 'absolute',
-              top: '0px',
-              left: 0,
-              right: 0,
-              bottom: 0,
+              inset: 0,
               backgroundColor: '#000',
               display: 'flex',
               alignItems: 'center',
@@ -791,6 +676,161 @@ const StreamCard = memo(
           )}
         </Box>
       )}
+
+      {/* ── Title bar (top-left) — pulsing live dot + channel name; also the drag handle ── */}
+      <Box
+        className="drag-handle"
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 5,
+          minHeight: 50,
+          px: '14px',
+          pt: '12px',
+          pb: '22px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.875,
+          cursor: 'move',
+          background: 'linear-gradient(to bottom, rgba(8,7,13,0.85), transparent)'
+        }}
+      >
+        {(error || (isPlaying && !isLoading)) && (
+          <Box
+            sx={{
+              flexShrink: 0,
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: error ? tokens.error : tokens.live,
+              boxShadow: `0 0 8px ${error ? tokens.error : tokens.live}`,
+              animation: 'sg-pulse 2s ease-in-out infinite'
+            }}
+          />
+        )}
+        <Typography
+          noWrap
+          sx={{
+            minWidth: 0,
+            fontFamily: tokens.fontDisplay,
+            fontSize: '14px',
+            fontWeight: 600,
+            letterSpacing: '-0.01em',
+            color: tokens.text
+          }}
+        >
+          {stream.name}
+        </Typography>
+      </Box>
+
+      {/* ── Hover controls (top-right, in the title bar) ── */}
+      <Box
+        className="feed-ctl"
+        sx={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          zIndex: 6,
+          display: 'flex',
+          gap: 0.75,
+          opacity: 0,
+          transition: `opacity ${tokens.motion}`
+        }}
+      >
+        {isPlaying && (
+          <>
+            <Tooltip title={currentMuteState ? 'Unmute' : 'Mute'}>
+              <IconButton
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleToggleMute()
+                }}
+                sx={{
+                  ...ctlBtnSx,
+                  ...(currentMuteState && {
+                    color: tokens.errorText,
+                    backgroundColor: 'rgba(255,107,129,0.18)'
+                  })
+                }}
+              >
+                {currentMuteState ? (
+                  <VolumeOff sx={{ fontSize: 14 }} />
+                ) : (
+                  <VolumeUp sx={{ fontSize: 14 }} />
+                )}
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={currentFitMode === 'contain' ? 'Fill' : 'Fit'}>
+              <IconButton
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleToggleFitMode()
+                }}
+                sx={ctlBtnSx}
+              >
+                {currentFitMode === 'contain' ? (
+                  <CropFree sx={{ fontSize: 14 }} />
+                ) : (
+                  <AspectRatio sx={{ fontSize: 14 }} />
+                )}
+              </IconButton>
+            </Tooltip>
+            {(videoId || channelName) && onAddChat && (
+              <Tooltip title="Open chat">
+                <IconButton
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (streamType === 'youtube' && videoId) {
+                      onAddChat(videoId, stream.id, stream.name)
+                    } else if (streamType === 'twitch' && channelName) {
+                      onAddChat(channelName, stream.id, stream.name)
+                    }
+                  }}
+                  sx={ctlBtnSx}
+                >
+                  <Chat sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            <Tooltip title="Stop">
+              <IconButton
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleStop()
+                }}
+                sx={ctlBtnSx}
+              >
+                <Stop sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+          </>
+        )}
+        <Tooltip title="Edit stream">
+          <IconButton
+            onClick={(e) => {
+              e.stopPropagation()
+              onEdit(stream)
+            }}
+            sx={ctlBtnSx}
+          >
+            <Edit sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Remove">
+          <IconButton
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove(stream.id)
+            }}
+            sx={{ ...ctlBtnSx, '&:hover': { backgroundColor: 'rgba(255,107,129,0.22)' } }}
+          >
+            <Close sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
     </Card>
   )
   })

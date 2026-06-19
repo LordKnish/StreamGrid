@@ -6,14 +6,23 @@ node_modules
 # Production
 dist
 out
-build
 release
+# NOTE: `build/` holds electron-builder resources (icons, entitlements) and is
+# intentionally tracked — do not ignore it.
+
+# Design source bundles (not app code)
+Streamgrid design language.zip
 
 # Testing
 coverage
 
 # Electron
 .electron-vendors.cache.json
+
+# electron-vite temp config artifacts
+electron.vite.config.*.mjs
+electron.vite.config.*.js
+!electron.vite.config.ts
 
 # Logs
 logs

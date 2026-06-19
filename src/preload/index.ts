@@ -42,6 +42,30 @@ const api = {
     const listener = (): void => callback()
     ipcRenderer.on('app-before-quit', listener)
     return () => ipcRenderer.removeListener('app-before-quit', listener)
+  },
+  // Secure command bridge for the main-process REST API server.
+  // The renderer registers a single handler that maps structured actions to
+  // store operations; results are returned to main via a correlated reply.
+  onApiCommand: (
+    handler: (action: string, payload: unknown) => Promise<unknown> | unknown
+  ): (() => void) => {
+    const listener = async (
+      _event: Electron.IpcRendererEvent,
+      msg: { requestId: number; action: string; payload: unknown }
+    ): Promise<void> => {
+      try {
+        const result = await handler(msg.action, msg.payload)
+        ipcRenderer.send('api:response', { requestId: msg.requestId, ok: true, result })
+      } catch (error) {
+        ipcRenderer.send('api:response', {
+          requestId: msg.requestId,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+    ipcRenderer.on('api:command', listener)
+    return () => ipcRenderer.removeListener('api:command', listener)
   }
 }
 

@@ -4,73 +4,106 @@ import { Stream, GridItem, AppSettings } from '../types/stream'
 import { validateImportData } from './streamSelectors'
 import { SavedGrid } from '../types/grid'
 
-// Pure integer grid layout helper - no viewport math, no fractional units
 const GRID_COLS = 24
-const TARGET_ASPECT = 16 / 9
+const TARGET_ASPECT = 16 / 9 // 16:9 video tiles
 
-type LayoutOpts = {
-  allowedWidths?: number[]
-  preferLargerTiles?: boolean
-  maxRows?: number // budget in integer grid rows. default 24.
+/**
+ * Live grid geometry pushed from <StreamGrid> so layout math can fit the real
+ * window. `rowHeight`/`columnWidth` are the pixel size of one grid cell; `rows`
+ * is how many cell-rows fit in the visible canvas (the no-scroll budget).
+ */
+export type GridViewport = {
+  cols: number
+  rowHeight: number
+  columnWidth: number
+  rows: number
 }
 
-function chooseLayouts(
-  ids: string[],
-  opts?: LayoutOpts
-): GridItem[] {
-  const allowed = opts?.allowedWidths ?? [12, 8, 6, 4, 3, 2] // divisors of 24
-  const maxRows = opts?.maxRows ?? 24
+/** Split `total` into `parts` integers that sum to exactly `total` (remainder
+ *  spread across the first cells), so a row/column track fills with no gaps. */
+function distribute(total: number, parts: number): number[] {
+  const base = Math.floor(total / parts)
+  const rem = total - base * parts
+  return Array.from({ length: parts }, (_, i) => base + (i < rem ? 1 : 0))
+}
+
+/**
+ * Arrange N tiles to completely FILL the visible grid — every tile stretches so
+ * there are no gaps or letterboxing between tiles (the video itself keeps its
+ * aspect via each card's fit mode). This is the video-wall "justified grid".
+ *
+ * Step 1 — pick the row/column split. We brute-force the per-row column count
+ * c = 1..min(N, cols); rows = ceil(N/c). When the tiles are stretched to fill
+ * the canvas, one tile is about `(cols/c) × (rowBudget/rows)` cells, whose pixel
+ * aspect is `((cols·rows)/(c·rowBudget)) · cellAspect`. We choose the split whose
+ * filled-tile aspect is closest to 16:9 (log distance), tie-broken by fewer
+ * empty trailing cells, a balanced grid, then a landscape bias.
+ *
+ * Step 2 — fill. Row heights are `distribute(rowBudget, rows)` so they sum to the
+ * full canvas height; each row's tiles get `distribute(cols, itemsInRow)` so they
+ * sum to the full width. A short last row stretches across the whole width. The
+ * result tiles the entire canvas exactly, with no scroll.
+ */
+function computeLayout(ids: string[], vp?: GridViewport | null): GridItem[] {
   const n = ids.length
+  if (n === 0) return []
 
-  type Cand = { w: number; h: number; cols: number; rows: number; waste: number; totalH: number; score: number }
-  const feasible: Cand[] = []
-  const all: Cand[] = []
+  const cols = vp?.cols && vp.cols > 0 ? vp.cols : GRID_COLS
+  const rowBudget = vp?.rows && vp.rows > 0 ? vp.rows : cols
+  // Pixel aspect of a single grid cell (columnWidth : rowHeight). Defaults to
+  // 16:9 (a cell is one 16:9 unit) before real geometry is known.
+  const cellAspect =
+    vp && vp.rowHeight > 0 && vp.columnWidth > 0 ? vp.columnWidth / vp.rowHeight : TARGET_ASPECT
 
-  for (const w of allowed) {
-    const cols = Math.floor(GRID_COLS / w)
-    if (cols < 1) continue
-    const rows = Math.ceil(n / cols)
-    const h = Math.max(2, Math.round(w / TARGET_ASPECT)) // integer
-    const totalH = rows * h
-    const totalCells = cols * rows
-    const waste = totalCells - n
+  type Cand = { c: number; rows: number; distortion: number; empty: number; balance: number }
+  const EPS = 1e-6
 
-    // scoring once it fits the height budget
-    const sizeScore = w * h
-    const wasteScore = 1 / (waste + 1)
-    const balanceScore = 1 / (Math.abs(cols - rows) + 1)
-    // penalize tall stacks even if under budget so 12×7 loses to 8×5 when both fit
-    const heightPenalty = 1 / (totalH + 1)
-
-    const score = sizeScore * 0.5 + wasteScore * 0.25 + balanceScore * 0.15 + heightPenalty * 0.10
-
-    const c = { w, h, cols, rows, waste, totalH, score }
-    all.push(c)
-    if (totalH <= maxRows) feasible.push(c)
+  // Smaller aspect distortion wins; then fewer empty cells; then squarer grid;
+  // then a slight landscape preference (more columns).
+  const better = (a: Cand, b: Cand): boolean => {
+    if (Math.abs(a.distortion - b.distortion) > EPS) return a.distortion < b.distortion
+    if (a.empty !== b.empty) return a.empty < b.empty
+    if (a.balance !== b.balance) return a.balance < b.balance
+    return a.c > b.c
   }
 
-  const pick = (list: Cand[]): Cand =>
-    list.reduce((a, b) => (b.score > a.score ? b : a))
+  let best: Cand | null = null
+  for (let c = 1; c <= Math.min(n, cols); c++) {
+    const rows = Math.ceil(n / c)
+    const tileAspect = ((cols * rows) / (c * rowBudget)) * cellAspect
+    const cand: Cand = {
+      c,
+      rows,
+      distortion: Math.abs(Math.log(tileAspect / TARGET_ASPECT)),
+      empty: c * rows - n,
+      balance: Math.abs(c - rows)
+    }
+    if (!best || better(cand, best)) best = cand
+  }
+  if (!best) return []
 
-  // prefer any that fit the row budget; otherwise pick the smallest width to force-fit
-  const best = feasible.length > 0
-    ? pick(feasible)
-    : pick(all.sort((a, b) => a.w - b.w))
+  const { c, rows } = best
+  // Heights that fill the canvas when it fits; otherwise keep tiles ~16:9 and
+  // allow vertical scroll (too many tiles for the window).
+  const rowHeights =
+    rowBudget >= rows
+      ? distribute(rowBudget, rows)
+      : Array.from({ length: rows }, () =>
+          Math.max(1, Math.round((cols / c) / cellAspect))
+        )
 
   const res: GridItem[] = []
-  let k = 0
-  for (let r = 0; r < best.rows && k < n; r++) {
-    const count = Math.min(best.cols, n - k)
-    const offset = Math.floor((GRID_COLS - count * best.w) / 2)
-    for (let c = 0; c < count && k < n; c++, k++) {
-      res.push({
-        i: ids[k],
-        x: offset + c * best.w,
-        y: r * best.h,
-        w: best.w,
-        h: best.h
-      })
+  let idx = 0
+  let y = 0
+  for (let r = 0; r < rows && idx < n; r++) {
+    const itemsInRow = Math.min(c, n - idx)
+    const colWidths = distribute(cols, itemsInRow)
+    let x = 0
+    for (let j = 0; j < itemsInRow; j++, idx++) {
+      res.push({ i: ids[idx], x, y, w: colWidths[j], h: rowHeights[r] })
+      x += colWidths[j]
     }
+    y += rowHeights[r]
   }
   return res
 }
@@ -89,6 +122,7 @@ interface StreamStore {
   chats: ChatItem[]
   lastDraggedId: string | null
   settings: AppSettings
+  gridViewport: GridViewport | null
   // Grid management
   currentGridId: string | null
   currentGridName: string
@@ -118,6 +152,7 @@ interface StreamStore {
   muteAllStreams: () => void
   unmuteAllStreams: () => void
   autoArrangeStreams: () => void
+  setGridViewport: (viewport: GridViewport) => void
   // Grid management methods
   saveCurrentGrid: (name?: string) => Promise<SavedGrid>
   loadGrid: (gridId: string) => Promise<void>
@@ -136,6 +171,7 @@ const createInitialState = (): {
   chats: ChatItem[]
   lastDraggedId: string | null
   settings: AppSettings
+  gridViewport: GridViewport | null
   currentGridId: string | null
   currentGridName: string
   hasUnsavedChanges: boolean
@@ -146,6 +182,7 @@ const createInitialState = (): {
   layout: [],
   chats: [],
   lastDraggedId: null,
+  gridViewport: null,
   settings: {
     defaultMuteNewStreams: false,
     globalMuted: false,
@@ -188,7 +225,7 @@ export const useStreamStore = create<StreamStore>()(
               }
               const streams = [...state.streams, streamWithMute]
               const ids = [...streams.map(s => s.id), ...state.chats.map(c => c.id)]
-              const layout = chooseLayouts(ids, { maxRows: 24 })
+              const layout = computeLayout(ids, state.gridViewport)
               return { streams, layout, hasUnsavedChanges: true }
             },
             false,
@@ -204,8 +241,8 @@ export const useStreamStore = create<StreamStore>()(
               }))
 
               const allStreams = [...state.streams, ...streamsWithMute]
-              const allIds = allStreams.map(s => s.id)
-              const allLayouts = chooseLayouts(allIds, { maxRows: 24 })
+              const allIds = [...allStreams.map(s => s.id), ...state.chats.map(c => c.id)]
+              const allLayouts = computeLayout(allIds, state.gridViewport)
 
               return {
                 streams: allStreams,
@@ -290,7 +327,7 @@ export const useStreamStore = create<StreamStore>()(
             (state) => {
               const chats = [...state.chats, { id, streamId, streamType, streamName, streamIdentifier }]
               const ids = [...state.streams.map(s => s.id), ...chats.map(c => c.id)]
-              const layout = chooseLayouts(ids, { maxRows: 24 })
+              const layout = computeLayout(ids, state.gridViewport)
               return { chats, layout, hasUnsavedChanges: true }
             },
             false,
@@ -388,13 +425,16 @@ export const useStreamStore = create<StreamStore>()(
 
               // Stable order: streams first by insertion, then chats by insertion
               const ids = allItems.map(it => it.id)
-              const newLayout = chooseLayouts(ids, { maxRows: 24 })
+              const newLayout = computeLayout(ids, state.gridViewport)
 
               return { layout: newLayout, hasUnsavedChanges: true }
             },
             false,
             'AUTO_ARRANGE_STREAMS'
           ),
+
+        setGridViewport: (viewport): void =>
+          set({ gridViewport: viewport }, false, 'SET_GRID_VIEWPORT'),
 
         // Grid management methods
         saveCurrentGrid: async (name?: string): Promise<SavedGrid> => {
@@ -473,6 +513,7 @@ export const useStreamStore = create<StreamStore>()(
             // Reset to empty grid if deleting current
             set({
               ...createInitialState(),
+              gridViewport: state.gridViewport,
               recentGridIds: state.recentGridIds.filter(id => id !== gridId)
             }, false, 'DELETE_GRID')
           } else {
@@ -495,6 +536,7 @@ export const useStreamStore = create<StreamStore>()(
           set({
             ...createInitialState(),
             currentGridName: name,
+            gridViewport: get().gridViewport,
             recentGridIds: get().recentGridIds
           }, false, 'CREATE_NEW_GRID')
         },

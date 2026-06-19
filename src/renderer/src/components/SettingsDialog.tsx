@@ -8,22 +8,66 @@ import {
   Box,
   Typography,
   Switch,
-  FormControlLabel,
   Slider,
-  Divider,
   IconButton,
   TextField,
   Alert,
   Snackbar,
   InputAdornment
 } from '@mui/material'
-import { Close, VolumeUp, PlayArrow, Api, ContentCopy, Refresh, CheckCircle } from '@mui/icons-material'
+import {
+  Close,
+  VolumeUp,
+  PlayArrow,
+  Api,
+  ContentCopy,
+  Refresh,
+  OpenInNew
+} from '@mui/icons-material'
 import { useStreamStore } from '../store/useStreamStore'
+import { tokens } from '../theme'
 
 interface SettingsDialogProps {
   open: boolean
   onClose: () => void
 }
+
+/** Quiet, intentional section header — muted icon + overline label, no AI-card formula. */
+const SectionHeader: React.FC<{ icon: React.ReactNode; label: string }> = ({ icon, label }) => (
+  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+    <Box sx={{ display: 'flex', color: 'text.secondary', '& svg': { fontSize: 18 } }}>{icon}</Box>
+    <Typography
+      variant="overline"
+      sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: '0.09em', lineHeight: 1 }}
+    >
+      {label}
+    </Typography>
+  </Box>
+)
+
+/** A single setting row: title + optional helper on the left, control on the right. */
+const ToggleRow: React.FC<{
+  title: string
+  description?: string
+  checked: boolean
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+}> = ({ title, description, checked, onChange }) => (
+  <Box
+    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, py: 0.5 }}
+  >
+    <Box sx={{ minWidth: 0 }}>
+      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+        {title}
+      </Typography>
+      {description && (
+        <Typography variant="caption" color="text.secondary">
+          {description}
+        </Typography>
+      )}
+    </Box>
+    <Switch checked={checked} onChange={onChange} />
+  </Box>
+)
 
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const { settings, updateSettings } = useStreamStore()
@@ -59,7 +103,9 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose })
     updateSettings({ autoStartDelay: value as number })
   }
 
-  const handleApiEnabledChange = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+  const handleApiEnabledChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ): Promise<void> => {
     const enabled = event.target.checked
     updateSettings({ apiEnabled: enabled })
 
@@ -128,265 +174,201 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose })
     }
   }
 
+  const apiBase = `http://localhost:${settings.apiPort}`
+
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      PaperProps={{
-        sx: {
-          borderRadius: 2,
-          bgcolor: 'background.paper'
-        }
-      }}
-    >
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h6">Settings</Typography>
-          <IconButton onClick={onClose} size="small">
-            <Close />
-          </IconButton>
-        </Box>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle
+        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}
+      >
+        Settings
+        <IconButton
+          onClick={onClose}
+          size="small"
+          aria-label="Close settings"
+          sx={{ color: 'text.secondary' }}
+        >
+          <Close fontSize="small" />
+        </IconButton>
       </DialogTitle>
 
-      <DialogContent>
-        {/* Audio Settings Section */}
-        <Box sx={{ mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <VolumeUp color="primary" />
-            <Typography variant="subtitle1" fontWeight="bold">
-              Audio Settings
-            </Typography>
-          </Box>
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={settings.defaultMuteNewStreams}
-                onChange={handleDefaultMuteChange}
-                color="primary"
-              />
-            }
-            label={
-              <Box>
-                <Typography variant="body2">Start new streams muted</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  All newly added streams will start with audio muted
-                </Typography>
-              </Box>
-            }
-            sx={{ mb: 1, alignItems: 'flex-start' }}
+      <DialogContent
+        sx={{
+          '& > section:not(:first-of-type)': {
+            mt: 3,
+            pt: 3,
+            borderTop: `1px solid ${tokens.border}`
+          }
+        }}
+      >
+        {/* Audio */}
+        <Box component="section">
+          <SectionHeader icon={<VolumeUp />} label="Audio" />
+          <ToggleRow
+            title="Start new streams muted"
+            description="Newly added streams begin without audio."
+            checked={settings.defaultMuteNewStreams}
+            onChange={handleDefaultMuteChange}
           />
         </Box>
 
-        <Divider sx={{ my: 3 }} />
-
-        {/* Auto-Start Settings Section */}
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <PlayArrow color="primary" />
-            <Typography variant="subtitle1" fontWeight="bold">
-              Auto-Start Settings
-            </Typography>
-          </Box>
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={settings.autoStartOnLaunch}
-                onChange={handleAutoStartChange}
-                color="primary"
-              />
-            }
-            label={
-              <Box>
-                <Typography variant="body2">Auto-start streams on launch</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Automatically play all streams when the application opens
-                </Typography>
-              </Box>
-            }
-            sx={{ mb: 2, alignItems: 'flex-start' }}
+        {/* Startup */}
+        <Box component="section">
+          <SectionHeader icon={<PlayArrow />} label="Startup" />
+          <ToggleRow
+            title="Auto-start streams on launch"
+            description="Play every stream automatically when StreamGrid opens."
+            checked={settings.autoStartOnLaunch}
+            onChange={handleAutoStartChange}
           />
 
           {settings.autoStartOnLaunch && (
-            <Box
-              sx={{
-                mt: 2,
-                p: 2,
-                bgcolor: 'action.hover',
-                borderRadius: 1,
-                border: '1px solid',
-                borderColor: 'divider'
-              }}
-            >
-              <Typography variant="body2" fontWeight="medium" gutterBottom>
-                Start Delay: {settings.autoStartDelay} second{settings.autoStartDelay !== 1 ? 's' : ''}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                Wait before starting streams after app launch
-              </Typography>
+            <Box sx={{ mt: 2, pl: 0.5 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  mb: 0.5
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  Start delay
+                </Typography>
+                <Typography
+                  variant="body2"
+                  color="primary.light"
+                  sx={{ fontWeight: 600 }}
+                >
+                  {settings.autoStartDelay}s
+                </Typography>
+              </Box>
               <Slider
                 value={settings.autoStartDelay}
                 onChange={handleDelayChange}
                 min={0}
                 max={5}
                 step={1}
-                marks={[
-                  { value: 0, label: '0s' },
-                  { value: 1, label: '1s' },
-                  { value: 2, label: '2s' },
-                  { value: 3, label: '3s' },
-                  { value: 4, label: '4s' },
-                  { value: 5, label: '5s' }
-                ]}
+                marks={[0, 1, 2, 3, 4, 5].map((v) => ({ value: v, label: `${v}s` }))}
                 valueLabelDisplay="auto"
-                sx={{ mt: 1 }}
               />
             </Box>
           )}
         </Box>
 
-        <Divider sx={{ my: 3 }} />
-
-        {/* API Settings Section */}
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <Api color="primary" />
-            <Typography variant="subtitle1" fontWeight="bold">
-              REST API Settings
-            </Typography>
-          </Box>
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={settings.apiEnabled}
-                onChange={handleApiEnabledChange}
-                color="primary"
-              />
-            }
-            label={
-              <Box>
-                <Typography variant="body2">Enable REST API</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Allow external control via HTTP API
-                </Typography>
-              </Box>
-            }
-            sx={{ mb: 2, alignItems: 'flex-start' }}
+        {/* REST API */}
+        <Box component="section">
+          <SectionHeader icon={<Api />} label="REST API" />
+          <ToggleRow
+            title="Enable REST API"
+            description="Control StreamGrid from other apps over local HTTP."
+            checked={settings.apiEnabled}
+            onChange={handleApiEnabledChange}
           />
 
           {settings.apiEnabled && (
-            <Box
-              sx={{
-                mt: 2,
-                p: 2,
-                bgcolor: 'action.hover',
-                borderRadius: 1,
-                border: '1px solid',
-                borderColor: 'divider'
-              }}
-            >
-              {/* API Server Status */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <CheckCircle
+            <Box sx={{ mt: 2 }}>
+              {/* Status pill */}
+              <Box
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  px: 1.25,
+                  py: 0.5,
+                  mb: 2,
+                  borderRadius: 999,
+                  border: `1px solid ${tokens.border}`,
+                  backgroundColor: 'rgba(255,255,255,0.03)'
+                }}
+              >
+                <Box
                   sx={{
-                    color: apiServerRunning ? 'success.main' : 'text.disabled',
-                    fontSize: 20
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: apiServerRunning ? 'success.main' : 'text.disabled',
+                    boxShadow: apiServerRunning ? '0 0 8px rgba(52,211,153,0.7)' : 'none'
                   }}
                 />
-                <Typography variant="body2" color={apiServerRunning ? 'success.main' : 'text.secondary'}>
-                  {apiServerRunning ? 'API Server Running' : 'API Server Stopped'}
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 600,
+                    color: apiServerRunning ? 'success.main' : 'text.secondary'
+                  }}
+                >
+                  {apiServerRunning ? 'Server running' : 'Server stopped'}
                 </Typography>
               </Box>
 
-              {/* Port Configuration */}
               <TextField
-                label="API Port"
+                label="Port"
                 type="number"
                 value={settings.apiPort}
                 onChange={handlePortChange}
                 size="small"
                 fullWidth
                 sx={{ mb: 2 }}
-                helperText={`API URL: http://localhost:${settings.apiPort}`}
+                helperText={apiBase}
+                FormHelperTextProps={{ sx: { mx: 0.5 } }}
               />
 
-              {/* API Key */}
               <TextField
-                label="API Key"
+                label="API key"
                 value={settings.apiKey || 'Not generated'}
                 size="small"
                 fullWidth
                 InputProps={{
                   readOnly: true,
+                  sx: { fontSize: '0.8rem' },
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton
                         onClick={handleCopyApiKey}
                         size="small"
                         disabled={!settings.apiKey}
-                        title="Copy API Key"
+                        title="Copy API key"
                       >
                         <ContentCopy fontSize="small" />
                       </IconButton>
                       <IconButton
                         onClick={handleGenerateApiKey}
                         size="small"
-                        title="Generate New API Key"
+                        title="Generate new key"
                       >
                         <Refresh fontSize="small" />
                       </IconButton>
                     </InputAdornment>
                   )
                 }}
-                sx={{ mb: 1 }}
+                helperText="Regenerating immediately invalidates the previous key."
+                sx={{ mb: 1.5 }}
               />
 
-              <Typography variant="caption" color="warning.main" sx={{ display: 'block', mb: 1 }}>
-                ⚠️ Keep your API key secure. Regenerating will invalidate the old key.
-              </Typography>
-
               <Button
-                variant="outlined"
+                variant="text"
                 size="small"
-                onClick={() => window.api.openExternal('https://github.com/LordKnish/StreamGrid/blob/main/docs/API.md')}
-                sx={{ textTransform: 'none' }}
+                endIcon={<OpenInNew sx={{ fontSize: 15 }} />}
+                onClick={() =>
+                  window.api.openExternal(
+                    'https://github.com/LordKnish/StreamGrid/blob/main/docs/API.md'
+                  )
+                }
+                sx={{ px: 0.5, color: 'primary.light' }}
               >
-                View API Documentation
+                API documentation
               </Button>
             </Box>
           )}
         </Box>
-
-        <Box
-          sx={{
-            mt: 3,
-            p: 2,
-            bgcolor: 'info.main',
-            color: 'info.contrastText',
-            borderRadius: 1,
-            opacity: 0.9
-          }}
-        >
-          <Typography variant="caption">
-            💡 Tip: All settings are automatically saved and will persist across app restarts
-          </Typography>
-        </Box>
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button
-          onClick={onClose}
-          variant="contained"
-          sx={{
-            px: 3,
-            borderRadius: 1,
-            textTransform: 'none'
-          }}
-        >
+      <DialogActions sx={{ px: 3, pb: 2.5, pt: 1 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ mr: 'auto' }}>
+          Changes save automatically
+        </Typography>
+        <Button onClick={onClose} variant="contained" sx={{ px: 3 }}>
           Done
         </Button>
       </DialogActions>
@@ -400,11 +382,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose })
       />
 
       {/* Error Snackbar */}
-      <Snackbar
-        open={!!apiError}
-        autoHideDuration={4000}
-        onClose={() => setApiError(null)}
-      >
+      <Snackbar open={!!apiError} autoHideDuration={4000} onClose={() => setApiError(null)}>
         <Alert severity="error" onClose={() => setApiError(null)}>
           {apiError}
         </Alert>

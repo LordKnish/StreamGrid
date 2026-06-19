@@ -2,8 +2,8 @@ import express, { Express, Request, Response } from 'express'
 import cors from 'cors'
 import rateLimit from 'express-rate-limit'
 import { Server } from 'http'
-import { BrowserWindow } from 'electron'
 import { authenticateApiKey, healthCheck, updateAuthConfig, generateApiKey } from './apiAuth'
+import { callRenderer } from './apiBridge'
 import type { Stream } from '../shared/types/api'
 import type { SavedGrid } from '../shared/types/grid'
 
@@ -56,16 +56,8 @@ function createApp(): Express {
   // GET /api/streams - List all streams
   expressApp.get('/api/streams', authenticateApiKey, async (_req: Request, res: Response) => {
     try {
-      const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) {
-        res.status(503).json({ error: 'Application not ready' })
-        return
-      }
-
-      const result = await mainWindow.webContents.executeJavaScript(
-        'window.streamStore?.getState().streams || []'
-      )
-      res.json({ streams: result })
+      const streams = await callRenderer<Stream[]>('getStreams')
+      res.json({ streams: streams || [] })
     } catch (error) {
       console.error('Error getting streams:', error)
       res.status(500).json({ error: 'Failed to get streams' })
@@ -82,14 +74,8 @@ function createApp(): Express {
         return
       }
 
-      const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) {
-        res.status(503).json({ error: 'Application not ready' })
-        return
-      }
-
       // Generate unique ID
-      const streamId = `stream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      const streamId = `stream-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
 
       const newStream: Stream = {
         id: streamId,
@@ -100,9 +86,7 @@ function createApp(): Express {
         fitMode: fitMode || 'contain'
       }
 
-      await mainWindow.webContents.executeJavaScript(
-        `window.streamStore?.getState().addStream(${JSON.stringify(newStream)})`
-      )
+      await callRenderer('addStream', newStream)
 
       res.status(201).json({ success: true, stream: newStream })
     } catch (error) {
@@ -122,16 +106,8 @@ function createApp(): Express {
         return
       }
 
-      const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) {
-        res.status(503).json({ error: 'Application not ready' })
-        return
-      }
-
       // Check if stream exists
-      const streams = await mainWindow.webContents.executeJavaScript(
-        'window.streamStore?.getState().streams || []'
-      )
+      const streams = (await callRenderer<Stream[]>('getStreams')) || []
       const streamExists = streams.some((s: Stream) => s.id === id)
 
       if (!streamExists) {
@@ -139,9 +115,7 @@ function createApp(): Express {
         return
       }
 
-      await mainWindow.webContents.executeJavaScript(
-        `window.streamStore?.getState().updateStream('${id}', ${JSON.stringify(updates)})`
-      )
+      await callRenderer('updateStream', { id, updates })
 
       res.json({ success: true, id, updates })
     } catch (error) {
@@ -160,16 +134,8 @@ function createApp(): Express {
         return
       }
 
-      const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) {
-        res.status(503).json({ error: 'Application not ready' })
-        return
-      }
-
       // Check if stream exists
-      const streams = await mainWindow.webContents.executeJavaScript(
-        'window.streamStore?.getState().streams || []'
-      )
+      const streams = (await callRenderer<Stream[]>('getStreams')) || []
       const streamExists = streams.some((s: Stream) => s.id === id)
 
       if (!streamExists) {
@@ -177,9 +143,7 @@ function createApp(): Express {
         return
       }
 
-      await mainWindow.webContents.executeJavaScript(
-        `window.streamStore?.getState().removeStream('${id}')`
-      )
+      await callRenderer('removeStream', { id })
 
       res.json({ success: true, id })
     } catch (error) {
@@ -193,17 +157,7 @@ function createApp(): Express {
   // GET /api/grids - List all grids
   expressApp.get('/api/grids', authenticateApiKey, async (_req: Request, res: Response) => {
     try {
-      const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) {
-        res.status(503).json({ error: 'Application not ready' })
-        return
-      }
-
-      // Get all grids via IPC
-      const grids = await mainWindow.webContents.executeJavaScript(
-        'window.api.getAllGrids()'
-      )
-
+      const grids = await callRenderer('getAllGrids')
       res.json({ grids: grids || [] })
     } catch (error) {
       console.error('Error getting grids:', error)
@@ -221,12 +175,6 @@ function createApp(): Express {
         return
       }
 
-      const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) {
-        res.status(503).json({ error: 'Application not ready' })
-        return
-      }
-
       const gridId = `grid-${Date.now()}`
       const now = new Date().toISOString()
 
@@ -240,10 +188,7 @@ function createApp(): Express {
         chats: chats || []
       }
 
-      // Save grid via IPC
-      await mainWindow.webContents.executeJavaScript(
-        `window.api.saveGrid(${JSON.stringify(newGrid)})`
-      )
+      await callRenderer('saveGrid', newGrid)
 
       res.status(201).json({ success: true, grid: newGrid })
     } catch (error) {
@@ -262,16 +207,7 @@ function createApp(): Express {
         return
       }
 
-      const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) {
-        res.status(503).json({ error: 'Application not ready' })
-        return
-      }
-
-      // Load grid via store method
-      await mainWindow.webContents.executeJavaScript(
-        `window.streamStore?.getState().loadGrid('${id}')`
-      )
+      await callRenderer('loadGrid', { id })
 
       res.json({ success: true, id })
     } catch (error) {

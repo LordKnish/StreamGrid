@@ -5,11 +5,8 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  Button,
-  Box,
-  Typography
+  Button
 } from '@mui/material'
-import { GridOn, Warning } from '@mui/icons-material'
 
 interface AutoArrangeDialogProps {
   open: boolean
@@ -25,46 +22,12 @@ export const AutoArrangeDialog: React.FC<AutoArrangeDialogProps> = ({
   streamCount
 }) => {
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      PaperProps={{
-        sx: {
-          borderRadius: 2
-        }
-      }}
-    >
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 1 }}>
-        <GridOn color="primary" />
-        Auto-Arrange Streams
-      </DialogTitle>
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Auto-arrange grid?</DialogTitle>
       <DialogContent>
-        <DialogContentText component="div">
-          <Typography variant="body1" paragraph>
-            This will automatically rearrange all <strong>{streamCount}</strong> stream{streamCount !== 1 ? 's' : ''} and chat{streamCount !== 1 ? 's' : ''} in your grid using an intelligent layout algorithm.
-          </Typography>
-
-          <Box sx={{ my: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
-            <Typography variant="subtitle2" color="primary" gutterBottom>
-              ✨ Smart Features:
-            </Typography>
-            <Typography variant="body2" component="ul" sx={{ pl: 2, mb: 0 }}>
-              <li>Optimizes tile sizes to maximize screen space</li>
-              <li>Maintains 16:9 aspect ratio for video streams</li>
-              <li>Intelligently handles odd numbers of streams</li>
-              <li>Centers the last row for aesthetic balance</li>
-              <li>Minimizes wasted space in the grid</li>
-            </Typography>
-          </Box>
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
-            <Warning color="warning" fontSize="small" />
-            <Typography variant="body2" color="text.secondary">
-              Your current layout will be replaced.
-            </Typography>
-          </Box>
+        <DialogContentText>
+          This re-tiles all {streamCount} item{streamCount === 1 ? '' : 's'} to fit the window and
+          replaces your current layout. This can&apos;t be undone.
         </DialogContentText>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -77,10 +40,9 @@ export const AutoArrangeDialog: React.FC<AutoArrangeDialogProps> = ({
             onClose()
           }}
           variant="contained"
-          color="primary"
-          startIcon={<GridOn />}
+          autoFocus
         >
-          Auto-Arrange
+          Auto-arrange
         </Button>
       </DialogActions>
     </Dialog>

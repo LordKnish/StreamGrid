@@ -155,60 +155,6 @@ async function createWindow(): Promise<void> {
     }
   })
 
-  // TEMPORARILY DISABLED: Intercept Twitch embed requests to add parent parameter
-  // Commenting out to rule out webRequest interference during dev server loading
-  /*
-  mainWindow.webContents.session.webRequest.onBeforeRequest(
-    {
-      urls: ['https://player.twitch.tv/*', 'https://embed.twitch.tv/*']
-    },
-    (details, callback) => {
-      let redirectURL = details.url
-
-      // Parse the URL to get existing parameters
-      const url = new URL(redirectURL)
-      const params = url.searchParams
-
-      // Only modify if parent is not already set
-      if (!params.has('parent')) {
-        // Set parent to localhost with port for development, or just localhost for production
-        const parentDomain = !app.isPackaged ? 'localhost:5173' : 'localhost'
-        params.set('parent', parentDomain)
-        params.set('referrer', `https://${parentDomain}/`)
-
-        redirectURL = url.toString()
-        console.log('Adjusted Twitch embed URL to:', redirectURL)
-      }
-
-      callback({
-        cancel: false,
-        redirectURL
-      })
-    }
-  )
-
-  // Remove CSP headers for Twitch embeds and modify frame-ancestors
-  mainWindow.webContents.session.webRequest.onHeadersReceived(
-    {
-      urls: ['https://www.twitch.tv/*', 'https://player.twitch.tv/*', 'https://embed.twitch.tv/*']
-    },
-    (details, callback) => {
-      const responseHeaders = details.responseHeaders || {}
-
-      console.log('Processing CSP headers for:', details.url)
-
-      // Remove CSP headers that block embedding
-      delete responseHeaders['Content-Security-Policy']
-      delete responseHeaders['content-security-policy']
-
-      callback({
-        cancel: false,
-        responseHeaders
-      })
-    }
-  )
-  */
-
   // Add right-click menu for inspect element
   mainWindow.webContents.on('context-menu', (_, props): void => {
     const { x, y } = props

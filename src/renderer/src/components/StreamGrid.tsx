@@ -59,27 +59,37 @@ export const StreamGrid = React.memo(({
   const [dimensions, setDimensions] = useState({ width: 1200, rowHeight: 100 })
   const resizeTimeoutRef = useRef<number>()
 
+  const setGridViewport = useStreamStore((state) => state.setGridViewport)
+
   const updateDimensions = useCallback((): void => {
     if (containerRef.current) {
       const containerWidth = containerRef.current.offsetWidth
+      // Measure the real canvas (excludes app bar + status bar) so the grid
+      // fills the actual window rather than a hardcoded chrome estimate.
+      const containerHeight = containerRef.current.offsetHeight
       const newWidth = Math.max(Math.floor(containerWidth), 480)
 
-      // Match the algorithm's calculation exactly
-      const APPBAR_HEIGHT = 64
-      const containerHeight = window.innerHeight - APPBAR_HEIGHT
       const margins = calculateMargins()
-      const horizontalMargins = margins.edgeHorizontal
-      const verticalMargins = margins.edgeVertical
-      const availableWidth = newWidth - horizontalMargins
-      const availableHeight = containerHeight - verticalMargins
+      const COLS = 24
+      // Column pixel width exactly as react-grid-layout computes it, so the
+      // aspect-ratio decision in computeLayout matches what renders.
+      const columnWidth = (newWidth - margins.horizontal * (COLS + 1)) / COLS
+      const naturalRowHeight = Math.max(columnWidth / ASPECT_RATIO, 1)
 
-      const columnWidth = availableWidth / 24
-      const maxRowsByWidth = Math.floor(columnWidth / ASPECT_RATIO)
-      const maxRowsByHeight = Math.floor(availableHeight / 24)
-      const newRowHeight = Math.min(maxRowsByWidth, maxRowsByHeight)
+      // How many ~16:9 rows best fill the height, then stretch row height so
+      // those rows fill the canvas exactly (edge-to-edge, no bottom gap).
+      const usableHeight = Math.max(containerHeight - margins.vertical, 1)
+      const rowBudget = Math.max(1, Math.round(usableHeight / (naturalRowHeight + margins.vertical)))
+      const newRowHeight = Math.max(
+        Math.floor((usableHeight - rowBudget * margins.vertical) / rowBudget),
+        1
+      )
+
       setDimensions({ width: newWidth, rowHeight: newRowHeight })
+      // Publish geometry so auto-arrange / add can fill tiles to the window.
+      setGridViewport({ cols: COLS, rowHeight: newRowHeight, columnWidth, rows: rowBudget })
     }
-  }, [])
+  }, [setGridViewport])
 
   const debouncedUpdateDimensions = useCallback((): void => {
     if (resizeTimeoutRef.current) {
@@ -144,8 +154,8 @@ export const StreamGrid = React.memo(({
       ref={containerRef}
       sx={{
         width: '100%',
-        height: '100vh',
-        backgroundColor: 'background.default',
+        height: '100%',
+        backgroundColor: 'transparent',
         overflow: 'auto',
         userSelect: 'none',
         position: 'relative',

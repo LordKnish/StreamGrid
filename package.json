@@ -1,6 +1,6 @@
 {
   "name": "streamgrid",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "A high-performance multi-stream viewer application for watching multiple live streams simultaneously in customizable grid layouts. Supports YouTube, Twitch, HLS, DASH, RTSP, and local files.",
   "main": "./out/main/index.js",
   "author": {
@@ -46,10 +46,6 @@
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^6.4.1",
     "@mui/material": "^6.4.1",
-    "@types/express": "^5.0.3",
-    "@types/fluent-ffmpeg": "^2.1.27",
-    "@types/lodash": "^4.17.20",
-    "@types/uuid": "^10.0.0",
     "comlink": "^4.4.2",
     "compare-versions": "^6.1.1",
     "cors": "^2.8.5",
@@ -77,9 +73,13 @@
     "@electron-toolkit/eslint-config-ts": "^2.0.0",
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@testing-library/react": "^16.3.0",
+    "@types/express": "^5.0.3",
+    "@types/fluent-ffmpeg": "^2.1.27",
+    "@types/lodash": "^4.17.20",
     "@types/node": "^20.14.8",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.1",
     "@vitest/ui": "^3.2.4",
     "electron": "^31.0.2",
@@ -118,7 +118,7 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
-      "icon": "build/icons/icon.icns"
+      "icon": "build/icon.png"
     },
     "dmg": {
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}"

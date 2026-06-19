@@ -1,25 +1,26 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Dialog,
   DialogTitle,
   DialogContent,
-  Grid,
-  Card,
-  CardContent,
+  DialogActions,
   Typography,
   IconButton,
   Menu,
   MenuItem,
   ListItemIcon,
   ListItemText,
+  Divider,
   Box,
   TextField,
-  InputAdornment
+  InputAdornment,
+  Button,
+  Tooltip
 } from '@mui/material'
 import {
   Close,
   MoreVert,
-  Edit,
+  DriveFileRenameOutline,
   Delete,
   FileDownload,
   FileUpload,
@@ -28,8 +29,10 @@ import {
 } from '@mui/icons-material'
 import { formatDistanceToNow } from 'date-fns'
 import { useStreamStore } from '../store/useStreamStore'
-import { Button } from '@mui/material'
-import { Stream, GridItem } from '../types/stream'
+import { notifyGridsChanged } from '../hooks/useGrids'
+import { importGridFromFile } from '../utils/importGrid'
+import { tokens } from '../theme'
+import type { SavedGrid } from '../types/grid'
 
 interface GridManagementDialogProps {
   open: boolean
@@ -39,7 +42,6 @@ interface GridManagementDialogProps {
 interface GridInfo {
   id: string
   name: string
-  createdAt: string
   lastModified: string
   streamCount: number
 }
@@ -48,40 +50,32 @@ export const GridManagementDialog: React.FC<GridManagementDialogProps> = ({ open
   const [grids, setGrids] = useState<GridInfo[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; grid: GridInfo } | null>(null)
-  const [editingGrid, setEditingGrid] = useState<GridInfo | null>(null)
-  const [editName, setEditName] = useState('')
+  const [renameTarget, setRenameTarget] = useState<GridInfo | null>(null)
+  const [renameValue, setRenameValue] = useState('')
 
   const { loadGrid, deleteGrid, renameGrid, currentGridId, hasUnsavedChanges } = useStreamStore()
 
-  useEffect(() => {
-    if (open) {
-      loadGrids()
-    }
-  }, [open])
-
-  const loadGrids = async (): Promise<void> => {
+  const loadGrids = useCallback(async (): Promise<void> => {
     try {
-      if (!window.api?.getAllGrids) {
-        return
-      }
+      if (!window.api?.getAllGrids) return
       const allGrids = await window.api.getAllGrids()
-      // Map the API response to include createdAt field
-      const gridsWithCreatedAt = allGrids.map(grid => ({
-        ...grid,
-        createdAt: grid.lastModified // Use lastModified as createdAt if not available
-      }))
-      setGrids(gridsWithCreatedAt)
+      allGrids.sort((a, b) => a.name.localeCompare(b.name))
+      setGrids(allGrids)
     } catch (error) {
       console.error('Error loading grids:', error)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    if (open) loadGrids()
+  }, [open, loadGrids])
 
   const handleLoadGrid = async (gridId: string): Promise<void> => {
-    if (hasUnsavedChanges) {
-      const confirmed = confirm('You have unsaved changes. Do you want to continue?')
-      if (!confirmed) return
+    if (gridId === currentGridId) {
+      onClose()
+      return
     }
-
+    if (hasUnsavedChanges && !confirm('You have unsaved changes. Switch grids anyway?')) return
     try {
       await loadGrid(gridId)
       onClose()
@@ -90,44 +84,26 @@ export const GridManagementDialog: React.FC<GridManagementDialogProps> = ({ open
     }
   }
 
-  const handleDeleteGrid = async (grid: GridInfo): Promise<void> => {
-    const confirmed = confirm(`Are you sure you want to delete "${grid.name}"?`)
-    if (!confirmed) return
-
+  const handleDelete = async (grid: GridInfo): Promise<void> => {
+    if (!confirm(`Delete "${grid.name}"? This can't be undone.`)) return
     try {
       await deleteGrid(grid.id)
       await loadGrids()
+      notifyGridsChanged()
     } catch (error) {
       console.error('Error deleting grid:', error)
     }
   }
 
-  const handleRenameGrid = async (): Promise<void> => {
-    if (!editingGrid || !editName.trim()) return
-
+  const handleExport = async (grid: GridInfo): Promise<void> => {
     try {
-      await renameGrid(editingGrid.id, editName.trim())
-      await loadGrids()
-      setEditingGrid(null)
-      setEditName('')
-    } catch (error) {
-      console.error('Error renaming grid:', error)
-    }
-  }
-
-  const handleExportGrid = async (grid: GridInfo): Promise<void> => {
-    try {
-      if (!window.api?.loadGrid) {
-        return
-      }
-      const gridData = await window.api.loadGrid(grid.id)
-      if (!gridData) return
-
-      const blob = new Blob([JSON.stringify(gridData, null, 2)], { type: 'application/json' })
+      const data = await window.api?.loadGrid(grid.id)
+      if (!data) return
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${grid.name.replace(/[^a-z0-9]/gi, '_')}_grid.json`
+      link.download = `${grid.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_grid.json`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -137,225 +113,229 @@ export const GridManagementDialog: React.FC<GridManagementDialogProps> = ({ open
     }
   }
 
-  const handleDuplicateGrid = async (grid: GridInfo): Promise<void> => {
+  const handleDuplicate = async (grid: GridInfo): Promise<void> => {
     try {
-      if (!window.api?.loadGrid) {
-        return
+      const data = await window.api?.loadGrid(grid.id)
+      if (!data) return
+      const now = new Date().toISOString()
+      const copy: SavedGrid = {
+        ...data,
+        id: `grid-${Date.now()}`,
+        name: `${grid.name} (Copy)`,
+        createdAt: now,
+        lastModified: now
       }
-      const gridData = await window.api.loadGrid(grid.id)
-      if (!gridData) return
-
-      const newName = `${grid.name} (Copy)`
-      await useStreamStore.getState().saveCurrentGrid(newName)
+      await window.api.saveGrid(copy)
       await loadGrids()
+      notifyGridsChanged()
     } catch (error) {
       console.error('Error duplicating grid:', error)
     }
   }
 
-  const handleImportGrid = async (): Promise<void> => {
+  const submitRename = async (): Promise<void> => {
+    if (!renameTarget || !renameValue.trim()) return
     try {
-      // Create file input element
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.accept = '.json'
-
-      input.onchange = async (e): Promise<void> => {
-        const file = (e.target as HTMLInputElement).files?.[0]
-        if (!file) return
-
-        try {
-          const text = await file.text()
-          const data = JSON.parse(text)
-
-          // Validate the imported data structure
-          if (!data.streams || !Array.isArray(data.streams) ||
-              !data.layout || !Array.isArray(data.layout)) {
-            alert('Invalid grid file format. Please ensure the file contains streams and layout arrays.')
-            return
-          }
-
-          // Validate each stream has required fields
-          const validStreams = data.streams.every((stream: Stream) =>
-            stream.id && stream.name && stream.logoUrl && stream.streamUrl
-          )
-
-          if (!validStreams) {
-            alert('Invalid stream data. Each stream must have id, name, logoUrl, and streamUrl.')
-            return
-          }
-
-          // Validate each layout item has required fields
-          const validLayout = data.layout.every((item: GridItem) =>
-            item.i !== undefined &&
-            item.x !== undefined &&
-            item.y !== undefined &&
-            item.w !== undefined &&
-            item.h !== undefined
-          )
-
-          if (!validLayout) {
-            alert('Invalid layout data. Each layout item must have i, x, y, w, and h properties.')
-            return
-          }
-
-          // Import the data using the store's import method
-          const result = useStreamStore.getState().importStreams({
-            streams: data.streams,
-            layout: data.layout,
-            chats: data.chats || []
-          })
-
-          if (result.success) {
-            // Save as a new grid with the file name (without extension)
-            const gridName = file.name.replace(/\.json$/, '') || 'Imported Grid'
-            await useStreamStore.getState().saveCurrentGrid(gridName)
-            await loadGrids()
-            alert(`Grid "${gridName}" imported successfully!`)
-          } else {
-            alert(`Import failed: ${result.error}`)
-          }
-        } catch (error) {
-          console.error('Error parsing JSON file:', error)
-          alert('Failed to parse JSON file. Please ensure it is a valid JSON format.')
-        }
-      }
-
-      // Trigger file selection
-      input.click()
+      await renameGrid(renameTarget.id, renameValue.trim())
+      await loadGrids()
+      notifyGridsChanged()
     } catch (error) {
-      console.error('Error importing grid:', error)
-      alert('Failed to import grid.')
+      console.error('Error renaming grid:', error)
+    } finally {
+      setRenameTarget(null)
+      setRenameValue('')
     }
   }
 
-  const filteredGrids = grids.filter(grid =>
+  const handleImport = async (): Promise<void> => {
+    const result = await importGridFromFile()
+    if (result.status === 'success') {
+      await loadGrids()
+      notifyGridsChanged()
+    } else if (result.status === 'error') {
+      alert(result.error)
+    }
+  }
+
+  const filteredGrids = grids.filter((grid) =>
     grid.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      PaperProps={{
-        sx: { height: '80vh' }
-      }}
-    >
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h6">Manage Grids</Typography>
-          <IconButton onClick={onClose} size="small">
-            <Close />
+    <>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { height: '80vh' } }}
+      >
+        <DialogTitle
+          sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 2 }}
+        >
+          All grids
+          <IconButton onClick={onClose} size="small" sx={{ color: 'text.secondary' }}>
+            <Close fontSize="small" />
           </IconButton>
-        </Box>
-      </DialogTitle>
+        </DialogTitle>
 
-      <DialogContent>
-        <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-          <TextField
-            fullWidth
-            placeholder="Search grids..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search />
-                </InputAdornment>
-              )
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pb: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1.5 }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Search grids…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" sx={{ color: 'text.disabled' }} />
+                  </InputAdornment>
+                )
+              }}
+            />
+            <Button
+              variant="outlined"
+              startIcon={<FileUpload />}
+              onClick={handleImport}
+              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              Import
+            </Button>
+          </Box>
+
+          <Box
+            sx={{
+              flex: 1,
+              overflowY: 'auto',
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' },
+              gap: 1.5,
+              alignContent: 'start',
+              mx: -0.5,
+              px: 0.5
             }}
-          />
-          <Button
-            variant="contained"
-            startIcon={<FileUpload />}
-            onClick={handleImportGrid}
-            sx={{ whiteSpace: 'nowrap' }}
           >
-            Import Grid
-          </Button>
-        </Box>
-
-        <Grid container spacing={2}>
-          {filteredGrids.map((grid) => (
-            <Grid item xs={12} sm={6} md={4} key={grid.id}>
-              <Card
-                sx={{
-                  position: 'relative',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  border: currentGridId === grid.id ? '2px solid' : '1px solid',
-                  borderColor: currentGridId === grid.id ? 'primary.main' : 'divider',
-                  '&:hover': {
-                    transform: 'translateY(-2px)',
-                    boxShadow: 3
-                  }
-                }}
-                onClick={() => handleLoadGrid(grid.id)}
-              >
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                    <Box sx={{ flex: 1 }}>
-                      {editingGrid?.id === grid.id ? (
-                        <TextField
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              handleRenameGrid()
-                            }
-                          }}
-                          onBlur={handleRenameGrid}
-                          onClick={(e) => e.stopPropagation()}
-                          autoFocus
-                          size="small"
-                          fullWidth
-                        />
-                      ) : (
-                        <Typography variant="h6" gutterBottom>
-                          {grid.name}
-                        </Typography>
-                      )}
-                      <Typography variant="body2" color="text.secondary">
-                        {grid.streamCount} streams
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Modified {formatDistanceToNow(new Date(grid.lastModified), { addSuffix: true })}
-                      </Typography>
-                    </Box>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setMenuAnchor({ el: e.currentTarget, grid })
+            {filteredGrids.map((grid) => {
+              const isCurrent = grid.id === currentGridId
+              return (
+                <Box
+                  key={grid.id}
+                  onClick={() => handleLoadGrid(grid.id)}
+                  sx={{
+                    position: 'relative',
+                    cursor: 'pointer',
+                    p: 1.75,
+                    borderRadius: '14px',
+                    backgroundColor: isCurrent ? tokens.accentSoft : tokens.glass,
+                    border: `1px solid ${isCurrent ? 'rgba(139,92,246,0.4)' : tokens.border}`,
+                    transition: `border-color ${tokens.motion}, background-color ${tokens.motion}`,
+                    '&:hover': {
+                      borderColor: isCurrent ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.22)'
+                    }
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                    {/* Mini gradient layout thumbnail */}
+                    <Box
+                      sx={{
+                        flexShrink: 0,
+                        width: 44,
+                        height: 30,
+                        borderRadius: '7px',
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gridTemplateRows: '1fr 1fr',
+                        gap: '2px',
+                        p: '3px',
+                        backgroundColor: 'rgba(0,0,0,0.25)',
+                        border: `1px solid ${tokens.border}`
                       }}
                     >
-                      <MoreVert />
-                    </IconButton>
+                      {[0, 1, 2, 3].map((i) => (
+                        <Box
+                          key={i}
+                          sx={{
+                            borderRadius: '2px',
+                            backgroundImage: tokens.gradient,
+                            opacity: i < Math.min(4, Math.max(1, grid.streamCount)) ? 0.9 : 0.18
+                          }}
+                        />
+                      ))}
+                    </Box>
+
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography
+                        noWrap
+                        sx={{ fontFamily: tokens.fontDisplay, fontWeight: 600, fontSize: '0.95rem' }}
+                      >
+                        {grid.name}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                        {grid.streamCount} stream{grid.streamCount === 1 ? '' : 's'}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{ display: 'block', color: 'text.disabled' }}
+                      >
+                        {formatDistanceToNow(new Date(grid.lastModified), { addSuffix: true })}
+                      </Typography>
+                    </Box>
+
+                    <Tooltip title="Grid options">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setMenuAnchor({ el: e.currentTarget, grid })
+                        }}
+                        sx={{ color: 'text.secondary', mt: -0.5, mr: -0.5 }}
+                      >
+                        <MoreVert fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </Box>
-                </CardContent>
-                {currentGridId === grid.id && (
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      top: 8,
-                      right: 8,
-                      backgroundColor: 'primary.main',
-                      color: 'primary.contrastText',
-                      px: 1,
-                      py: 0.5,
-                      borderRadius: 1,
-                      fontSize: '0.75rem'
-                    }}
-                  >
-                    Current
-                  </Box>
-                )}
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
+
+                  {isCurrent && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        bottom: 8,
+                        right: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.04em',
+                        color: tokens.live
+                      }}
+                    >
+                      <Box
+                        sx={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: tokens.live }}
+                      />
+                      ACTIVE
+                    </Box>
+                  )}
+                </Box>
+              )
+            })}
+
+            {filteredGrids.length === 0 && (
+              <Typography
+                sx={{
+                  gridColumn: '1 / -1',
+                  textAlign: 'center',
+                  color: 'text.disabled',
+                  py: 6
+                }}
+              >
+                {grids.length === 0 ? 'No saved grids yet.' : 'No grids match your search.'}
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
 
         <Menu
           anchorEl={menuAnchor?.el}
@@ -365,24 +345,21 @@ export const GridManagementDialog: React.FC<GridManagementDialogProps> = ({ open
           <MenuItem
             onClick={() => {
               if (menuAnchor) {
-                setEditingGrid(menuAnchor.grid)
-                setEditName(menuAnchor.grid.name)
-                setMenuAnchor(null)
+                setRenameTarget(menuAnchor.grid)
+                setRenameValue(menuAnchor.grid.name)
               }
+              setMenuAnchor(null)
             }}
           >
             <ListItemIcon>
-              <Edit fontSize="small" />
+              <DriveFileRenameOutline fontSize="small" />
             </ListItemIcon>
             <ListItemText>Rename</ListItemText>
           </MenuItem>
-
           <MenuItem
             onClick={() => {
-              if (menuAnchor) {
-                handleDuplicateGrid(menuAnchor.grid)
-                setMenuAnchor(null)
-              }
+              if (menuAnchor) handleDuplicate(menuAnchor.grid)
+              setMenuAnchor(null)
             }}
           >
             <ListItemIcon>
@@ -390,13 +367,10 @@ export const GridManagementDialog: React.FC<GridManagementDialogProps> = ({ open
             </ListItemIcon>
             <ListItemText>Duplicate</ListItemText>
           </MenuItem>
-
           <MenuItem
             onClick={() => {
-              if (menuAnchor) {
-                handleExportGrid(menuAnchor.grid)
-                setMenuAnchor(null)
-              }
+              if (menuAnchor) handleExport(menuAnchor.grid)
+              setMenuAnchor(null)
             }}
           >
             <ListItemIcon>
@@ -404,23 +378,61 @@ export const GridManagementDialog: React.FC<GridManagementDialogProps> = ({ open
             </ListItemIcon>
             <ListItemText>Export</ListItemText>
           </MenuItem>
-
+          <Divider sx={{ my: 0.5 }} />
           <MenuItem
             onClick={() => {
-              if (menuAnchor) {
-                handleDeleteGrid(menuAnchor.grid)
-                setMenuAnchor(null)
-              }
+              if (menuAnchor) handleDelete(menuAnchor.grid)
+              setMenuAnchor(null)
             }}
             disabled={currentGridId === menuAnchor?.grid.id}
+            sx={{ color: 'error.main' }}
           >
             <ListItemIcon>
-              <Delete fontSize="small" />
+              <Delete fontSize="small" sx={{ color: 'error.main' }} />
             </ListItemIcon>
             <ListItemText>Delete</ListItemText>
           </MenuItem>
         </Menu>
-      </DialogContent>
-    </Dialog>
+      </Dialog>
+
+      {/* Rename — separate dialog so focus isn't stolen by the options menu */}
+      <Dialog
+        open={Boolean(renameTarget)}
+        onClose={() => setRenameTarget(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Rename grid</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Grid name"
+            fullWidth
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && renameValue.trim()) {
+                e.preventDefault()
+                submitRename()
+              }
+            }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setRenameTarget(null)} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={submitRename}
+            variant="contained"
+            disabled={!renameValue.trim() || renameValue === renameTarget?.name}
+          >
+            Rename
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   )
 }

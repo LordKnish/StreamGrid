@@ -32,6 +32,10 @@ declare global {
       generateApiKey: () => Promise<string>
       // App lifecycle events
       onAppBeforeQuit: (callback: () => void) => () => void
+      // Secure command bridge for the main-process REST API server
+      onApiCommand: (
+        handler: (action: string, payload: unknown) => Promise<unknown> | unknown
+      ) => () => void
     }
   }
 }

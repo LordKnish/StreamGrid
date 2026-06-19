@@ -1,11 +1,11 @@
 # StreamGrid
 
 <div align="center">
-  <img src="src/renderer/src/assets/StreamGrid.svg" alt="StreamGrid Logo" width="200"/>
-  <h3>Your Streams, Your Layout, Your Way</h3>
+  <img src="src/renderer/src/assets/StreamGrid-mark.svg" alt="StreamGrid" width="120"/>
+  <h3>Your streams, your layout, your way</h3>
 </div>
 
-StreamGrid revolutionizes multi-stream viewing by giving you complete freedom over your layout. Want a massive main stream surrounded by smaller feeds? Or five equally-sized streams? Or any other arrangement you can imagine? StreamGrid makes it possible. Built with Electron, React, and TypeScript, it's the perfect solution for watching multiple streams exactly the way you want.
+StreamGrid is a multi-stream viewer that gives you total control over how you watch. Build a giant main feed ringed by smaller cameras, a tidy equal grid for monitoring, or any arrangement in between — then drag, resize, and auto-fit it to your window in a click. Built with Electron, React, and TypeScript, it's the command center for watching many live sources at once.
 
 **📚 Documentation:** [API Reference](docs/API.md) | [Bruno API Collection](bruno/README.md)
 
@@ -13,60 +13,35 @@ https://github.com/user-attachments/assets/1e098512-ed39-4094-ab13-84c144e60f7c
 
 ## ✨ Features
 
-- **Ultimate Layout Flexibility**:
-  - Create ANY layout you can imagine - from 2 streams to 5+ streams
-  - Make streams any size you want - go big with your main stream while keeping others visible
-  - Perfect for scenarios like:
-    * One large main stream surrounded by smaller secondary streams
-    * Equal-sized grid for monitoring multiple sources
-    * Custom arrangements for esports tournaments or multi-angle viewing
-- **Intuitive Controls**:
-  - Drag & Drop: Instantly reorganize your layout
-  - Resize Handles: Click and drag to adjust stream sizes in real-time
-- **Stream Management**:
-  - Add new streams with custom names and logos
-  - Remove streams with a single click
-  - Persistent layout saving with aggressive auto-save
-  - Export and Import your stream setups to share with friends
-- **Grid Management System**:
-  - Save multiple grid configurations
-  - Switch between different saved layouts instantly
-  - Rename and organize your grid presets
-  - Perfect for different viewing scenarios (gaming, monitoring, events)
-- **Responsive Design**: Automatically adjusts to window size while maintaining video aspect ratios
-- **Stream Platform Support**:
-  - **Local Files**: Play video files directly from your computer
-  - **YouTube**: Support for standard videos, live streams, and shorts
-  - **Twitch**: Support for channel live streams
-  - **RTSP Streams** (New in v2.0.0): Support for RTSP/RTSPS camera and streaming sources with automatic transcoding
-    - Requires FFmpeg installation
-    - Supports authentication (username/password in URL)
-    - Low-latency HLS transcoding
-    - Multiple concurrent RTSP streams
-    - Automatic retry on connection loss
-  - **HLS Support**: Compatible with HTTP Live Streaming (HLS) video sources
-  - **MPEG-DASH Support**: Compatible with Dynamic Adaptive Streaming over HTTP (DASH) video sources
-- **Chat Integration**:
-  - YouTube chat for live streams and videos
-  - Twitch chat for live streams
-  - Draggable and resizable chat windows
-- **Cross-Platform**: Available for Windows, macOS, and Linux
-- **REST API for Automation** (New in v2.0.0):
-  - Full programmatic control via REST API
-  - Add, update, and remove streams remotely
-  - Manage grid configurations programmatically
-  - API key authentication with rate limiting
-  - [API documentation](docs/API.md) with [Bruno test collection](bruno/README.md)
-- **M3U Playlist Import** (New in v2.0.0):
-  - Import M3U/M3U8 playlists with one click
-  - Automatic grid arrangement with intelligent layout
-- **Advanced Sound Management** (New in v2.0.0):
-  - Global mute/unmute all streams
+- **Layouts that fill the window**:
+  - Build ANY arrangement — from 2 feeds to 20+
+  - Drag to reorder and grab a corner to resize in real time
+  - One-click **Auto-arrange** packs every feed edge-to-edge, stretching tiles to fill the screen at the best fit for your window
+- **Grid management**:
+  - Save unlimited grid presets and switch instantly (Ctrl/Cmd+1–9, Ctrl/Cmd+Tab)
+  - Rename, duplicate, export, and delete from the **All grids** view
+  - Import a shared grid straight from the **+** menu, or export yours to send to a friend
+  - The quick switcher (Ctrl/Cmd+K) jumps between grids in a keystroke
+- **Stream platform support**:
+  - **Local files** — play video straight from your computer
+  - **YouTube** — standard videos, live streams, and shorts
+  - **Twitch** — channel live streams
+  - **RTSP / RTSPS** — IP cameras and streaming sources with automatic FFmpeg transcoding (auth, low-latency HLS, multiple concurrent streams, auto-retry)
+  - **HLS** — HTTP Live Streaming sources
+  - **MPEG-DASH** — Dynamic Adaptive Streaming over HTTP
+- **Sound management**:
+  - Global mute/unmute for the whole wall
   - Per-stream audio controls
-  - Auto-start streams muted option
-- **Auto-Start & Auto-Restart** (New in v2.0.0):
-  - Automatically play all streams on app launch
+  - Option to start streams muted
+- **Chat integration**:
+  - YouTube and Twitch live chat as draggable, resizable panels
+- **Automation**:
+  - Auto-start all streams on launch (with configurable delay)
   - Automatic retry for failed streams with exponential backoff
+  - **REST API** for full programmatic control — add/update/remove streams and manage grids remotely, with API-key auth and rate limiting
+  - **M3U / M3U8 playlist import** with automatic arrangement
+- **Persistent everything**: aggressive auto-save on every meaningful change
+- **Cross-platform**: Windows, macOS, and Linux
 
 ## 🚀 Getting Started
 
@@ -74,10 +49,10 @@ https://github.com/user-attachments/assets/1e098512-ed39-4094-ab13-84c144e60f7c
 
 1. Visit the [Releases](https://github.com/LordKnish/StreamGrid/releases) section
 2. Download the latest version for your platform:
-   - **Windows**: `streamgrid-2.0.0-win-x64.exe`
-   - **macOS (Intel)**: `streamgrid-2.0.0-mac-x64.dmg`
-   - **macOS (Apple Silicon)**: `streamgrid-2.0.0-mac-arm64.dmg`
-   - **Linux**: `streamgrid-2.0.0-linux-x64.AppImage`
+   - **Windows**: `streamgrid-3.0.0-win-x64.exe`
+   - **macOS (Intel)**: `streamgrid-3.0.0-mac-x64.dmg`
+   - **macOS (Apple Silicon)**: `streamgrid-3.0.0-mac-arm64.dmg`
+   - **Linux**: `streamgrid-3.0.0-linux-x64.AppImage`
 3. Install and run StreamGrid
 
 ### Option 2: Build from Source
@@ -129,21 +104,23 @@ npm install
 npm run dev
 ```
 
-4. **Build the application** (for production)
+4. **Package the application** (for distribution)
 ```bash
-# Build for your current platform
-npm run build
-
-# Or build for specific platforms:
-npm run build:win    # Windows
-npm run build:mac    # macOS
-npm run build:linux  # Linux
+npm run dist:win        # Windows (NSIS installer)
+npm run dist:mac:x64    # macOS (Intel)
+npm run dist:mac:arm64  # macOS (Apple Silicon)
+npm run dist:linux      # Linux (AppImage + deb)
 ```
 
-5. **Find your built application**
-   - Windows: `dist/streamgrid-2.0.0-win-x64.exe`
-   - macOS: `dist/streamgrid-2.0.0-mac-*.dmg`
-   - Linux: `dist/streamgrid-2.0.0-linux-x64.AppImage`
+   To produce an unpacked build for the current platform without an installer:
+```bash
+npm run build:unpack
+```
+
+5. **Find your built application** in the `dist/` directory, e.g.:
+   - Windows: `dist/streamgrid-3.0.0-win-x64.exe`
+   - macOS: `dist/streamgrid-3.0.0-mac-*.dmg`
+   - Linux: `dist/streamgrid-3.0.0-linux-x64.AppImage`
 
 ## 📹 RTSP Stream Support
 
@@ -168,15 +145,15 @@ rtsps://secure-camera.example.com/stream
 ### How It Works
 1. StreamGrid detects RTSP URLs automatically
 2. FFmpeg transcodes the RTSP stream to HLS format in real-time
-3. The HLS stream is served locally and played in the browser
+3. The HLS stream is served locally and played in the app
 4. Low latency (~2-3 seconds) with automatic retry on connection loss
 
 ### Adding an RTSP Stream
-1. Click "Add Stream" button
+1. Click the **Add Stream** button
 2. Enter your RTSP URL in the Stream URL field
 3. The app will show "RTSP stream (requires FFmpeg)" if detected
 4. Add a name and optional logo
-5. Click "Add Stream"
+5. Click **Add Stream**
 
 ### Troubleshooting RTSP Streams
 
@@ -184,6 +161,7 @@ rtsps://secure-camera.example.com/stream
 - Install FFmpeg using the instructions above
 - Restart StreamGrid after installation
 - Verify FFmpeg is in your system PATH: `ffmpeg -version`
+- The status bar shows whether FFmpeg was detected on launch
 
 **Stream fails to load:**
 - Verify the RTSP URL is correct
@@ -203,7 +181,7 @@ rtsps://secure-camera.example.com/stream
 
 ### Performance Tips
 - Limit concurrent RTSP streams to 3-4 for best performance
-- Use wired network connection for cameras when possible
+- Use a wired network connection for cameras when possible
 - Close unused RTSP streams to free resources
 - RTSP transcoding uses ~100MB RAM per stream
 
@@ -242,7 +220,9 @@ StreamGrid/
 │   │   │   │   └── ...
 │   │   │   ├── hooks/       # Custom React hooks
 │   │   │   ├── store/       # Zustand state management
+│   │   │   ├── theme.ts     # Design tokens + MUI theme
 │   │   │   ├── types/       # TypeScript type definitions
+│   │   │   ├── utils/       # Helpers (grid import, parsing)
 │   │   │   ├── workers/     # Web workers
 │   │   │   └── App.tsx      # Main React component
 │   │   └── index.html       # HTML entry point
@@ -253,7 +233,6 @@ StreamGrid/
 │   └── icon.svg            # App icon (vector)
 ├── dist/                   # Built applications (after build)
 ├── out/                    # Compiled TypeScript (generated)
-├── electron-builder.yml    # Electron Builder configuration
 ├── electron.vite.config.ts # Vite configuration
 ├── package.json           # Project dependencies
 └── tsconfig.json          # TypeScript configuration
@@ -261,7 +240,21 @@ StreamGrid/
 
 ## 📋 Changelog
 
-### Version 2.0.0 (Latest)
+### Version 3.0.0 (Latest)
+**Layout Engine & Grid Management**
+
+#### 🚀 New & Improved
+- **Window-filling auto-arrange** — a rebuilt layout engine that picks the best row/column split for the current window and stretches every tile edge-to-edge, with no empty bands or letterboxing between feeds
+- **Reliable grid management** — fixed renaming in the All grids view, corrected grid duplication, and a redesigned, faster All grids browser with search
+- **Import from the + menu** — right-click the new-grid **+** button to import a shared grid; import is also available from the All grids view
+- **Streamlined auto-arrange** — the confirmation is now a simple prompt
+- **Live status bar** — shows FFmpeg readiness, the active grid, and feed count
+
+#### 🐛 Bug Fixes
+- Grids now stay in sync across the tab strip, quick switcher, and All grids view after rename/duplicate/delete/import
+- Layout calculations measure the real canvas, so feeds fit the window accurately
+
+### Version 2.0.0
 **Major Feature Release - Automation & Advanced Controls**
 
 #### 🚀 New Features
@@ -271,7 +264,7 @@ StreamGrid/
 - **Sound Management System** - Global and per-stream audio controls
 - **Auto-Start Streams** - Automatically play all streams on launch
 - **Auto-Restart Failed Streams** - Automatic retry with exponential backoff
-- **Auto-Arrange Grid** - Intelligent grid layout with row-budget algorithm
+- **Auto-Arrange Grid** - Intelligent grid layout
 
 #### 📚 Documentation
 - Complete REST API documentation ([docs/API.md](docs/API.md))

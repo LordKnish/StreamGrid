@@ -123,6 +123,8 @@ export const AddStreamDialog: React.FC<AddStreamDialogProps> = ({
         const path = urlObj.pathname.toLowerCase()
         if (path.endsWith('.m3u8')) return 'HLS Stream'
         if (path.endsWith('.mpd')) return 'DASH Stream'
+        // Redge / Edgeware live DASH manifests (.livx / /livedash/ path)
+        if (path.endsWith('.livx') || path.includes('/livedash/')) return 'DASH Stream'
         // Check for common streaming patterns
         if (url.includes('manifest') || url.includes('playlist')) {
           if (url.includes('m3u8')) return 'HLS Stream'
@@ -232,13 +234,23 @@ export const AddStreamDialog: React.FC<AddStreamDialogProps> = ({
     // Check if it's an RTSP URL
     const isRtspUrl = formData.streamUrl.startsWith('rtsp://') || formData.streamUrl.startsWith('rtsps://')
 
+    // ReactPlayer.canPlay only recognises DASH/HLS by .mpd/.m3u8 extensions, so
+    // manifests served with non-standard extensions (e.g. Redge .livx) are
+    // rejected even though our FilePlayer fallback can play them. Accept any URL
+    // we classify as a DASH/HLS manifest.
+    const detectedType = detectStreamType(formData.streamUrl)
+    const isManifestStream = detectedType === 'DASH Stream' || detectedType === 'HLS Stream'
+
     // Otherwise check normal stream validation
     return (
       formData.name.length >= 2 &&
       (formData.logoUrl.length === 0 || isValidImageUrl(formData.logoUrl)) &&
-      (ReactPlayer.canPlay(formData.streamUrl) || formData.streamUrl.startsWith('file://') || isRtspUrl)
+      (ReactPlayer.canPlay(formData.streamUrl) ||
+        formData.streamUrl.startsWith('file://') ||
+        isRtspUrl ||
+        isManifestStream)
     )
-  }, [formData, isValidImageUrl, m3uEntries.length])
+  }, [formData, isValidImageUrl, m3uEntries.length, detectStreamType])
 
   const handleSubmit = useCallback((): void => {
     // If M3U entries exist, import them all

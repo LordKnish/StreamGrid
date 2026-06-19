@@ -19,6 +19,20 @@ export function generateApiKey(): string {
 }
 
 /**
+ * Constant-time string comparison to avoid leaking the API key via timing.
+ */
+function safeCompare(a: string, b: string): boolean {
+  const bufferA = Buffer.from(a)
+  const bufferB = Buffer.from(b)
+  // timingSafeEqual requires equal-length buffers; bail early but still in a
+  // way that does not reveal where the mismatch occurred.
+  if (bufferA.length !== bufferB.length) {
+    return false
+  }
+  return crypto.timingSafeEqual(bufferA, bufferB)
+}
+
+/**
  * Update the authentication configuration
  */
 export function updateAuthConfig(config: Partial<ApiAuthConfig>): void {
@@ -45,8 +59,10 @@ export function authenticateApiKey(req: Request, res: Response, next: NextFuncti
     return
   }
 
-  // Check for API key in header
-  const providedKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '')
+  // Check for API key in header (headers may be string | string[])
+  const rawHeaderKey = req.headers['x-api-key'] ?? req.headers['authorization']
+  const headerValue = Array.isArray(rawHeaderKey) ? rawHeaderKey[0] : rawHeaderKey
+  const providedKey = headerValue?.replace(/^Bearer\s+/i, '')
 
   if (!providedKey) {
     res.status(401).json({
@@ -56,8 +72,9 @@ export function authenticateApiKey(req: Request, res: Response, next: NextFuncti
     return
   }
 
-  // Validate API key
-  if (providedKey !== authConfig.apiKey) {
+  // Validate API key with a constant-time comparison. Reject if no key has been
+  // configured so an empty configured key can never authenticate.
+  if (!authConfig.apiKey || !safeCompare(providedKey, authConfig.apiKey)) {
     res.status(403).json({
       error: 'Invalid API key',
       message: 'The provided API key is invalid'
